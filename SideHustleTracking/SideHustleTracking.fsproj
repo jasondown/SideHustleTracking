@@ -5,6 +5,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Include="Domain\UnitsOfMeasure.fs" />
+    <Compile Include="Domain\Types.fs" />
+    <Compile Include="Domain\Calculations.fs" />
+    <Compile Include="Domain\Entry.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
 
