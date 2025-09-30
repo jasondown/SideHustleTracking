@@ -135,9 +135,11 @@ let closeEntryHandler (entryIdStr: string) : HttpHandler =
                         let closedEntry = Closed closedInterval
                         updateEntry closedEntry
                         
-                        // Return the updated row for htmx to replace
-                        let row = entryRow closedEntry
-                        return! htmlView row next ctx
+                        // Return ALL entries (sorted) so table updates properly
+                        let allEntries = readEntries ()
+                        let rows = allEntries |> List.map entryRow
+                        let tbody = tbody [ _id "entries-tbody" ] rows
+                        return! htmlView tbody next ctx
                     | Failure errors ->
                         let errorList = errors |> NonEmptyList.toList
                         let errorMsg = String.concat "; " errorList

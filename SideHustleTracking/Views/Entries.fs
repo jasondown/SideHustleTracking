@@ -34,7 +34,7 @@ let entryRow (entry: Entry) =
                 let (EntryId guid) = o.Id
                 button [ 
                     _hx "post" (sprintf "/entries/%s/close" (guid.ToString()))
-                    _hx "target" "closest tr"
+                    _hx "target" "#entries-tbody"
                     _hx "swap" "outerHTML"
                 ] [ str "Stop" ] 
             ]
