@@ -112,3 +112,11 @@ let updateEntry (updatedEntry: Entry) : unit =
             if getId e = getId updatedEntry then updatedEntry
             else e)
     writeEntries newEntries
+
+// Delete a single entry (find by ID and remove, then rewrite CSV)
+let deleteEntry (entryId: EntryId) : unit =
+    let entries = readEntries ()
+    let newEntries =
+        entries
+        |> List.filter (fun e -> getId e <> entryId)
+    writeEntries newEntries

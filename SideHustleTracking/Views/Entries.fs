@@ -43,7 +43,14 @@ let entryRow (entry: Entry) =
                     _hx "get" (sprintf "/entries/%s/edit" (guid.ToString()))
                     _hx "target" "closest tr"
                     _hx "swap" "outerHTML"
+                    _style "margin-right: 5px;"
                 ] [ str "Edit" ]
+                button [
+                    _hx "get" (sprintf "/entries/%s/delete/confirm" (guid.ToString()))
+                    _hx "target" "closest tr"
+                    _hx "swap" "outerHTML"
+                    _style "background: #dc3545;"
+                ] [ str "Delete" ]
             ]
         ]
     | Closed c ->
@@ -61,7 +68,14 @@ let entryRow (entry: Entry) =
                     _hx "get" (sprintf "/entries/%s/edit" (guid.ToString()))
                     _hx "target" "closest tr"
                     _hx "swap" "outerHTML"
+                    _style "margin-right: 5px;"
                 ] [ str "Edit" ]
+                button [
+                    _hx "get" (sprintf "/entries/%s/delete/confirm" (guid.ToString()))
+                    _hx "target" "closest tr"
+                    _hx "swap" "outerHTML"
+                    _style "background: #dc3545;"
+                ] [ str "Delete" ]
             ]
         ]
 
@@ -124,6 +138,40 @@ let entryEditFormRow (entry: Entry) =
             ]
         ]
     ]
+    
+let entryDeleteConfirmRow (entry: Entry) =
+    let (entryId, date, start, endTimeOpt) =
+        match entry with
+        | Open o -> (o.Id, o.Date, o.Start, None)
+        | Closed c -> (c.Id, c.Date, c.Start, Some c.End)
+    
+    let (EntryId guid) = entryId
+    let entryDesc = 
+        match endTimeOpt with
+        | Some endTime -> 
+            sprintf "%s from %s to %s" (formatDate date) (formatTime start) (formatTime endTime)
+        | None ->
+            sprintf "%s starting at %s (open)" (formatDate date) (formatTime start)
+    
+    tr [ _class "error" ] [
+        td [ _colspan "8"; _style "padding: 20px;" ] [
+            p [ _style "margin: 0 0 10px 0; font-weight: bold;" ] [ 
+                str (sprintf "Delete this entry: %s?" entryDesc)
+            ]
+            button [
+                _hx "post" (sprintf "/entries/%s/delete" (guid.ToString()))
+                _hx "target" "#entries-tbody"
+                _hx "swap" "outerHTML"
+                _style "margin-right: 10px; background: #dc3545;"
+            ] [ str "Yes, Delete" ]
+            button [
+                _hx "get" (sprintf "/entries/%s/cancel" (guid.ToString()))
+                _hx "target" "closest tr"
+                _hx "swap" "outerHTML"
+            ] [ str "Cancel" ]
+        ]
+    ]
+
 
 let entriesTable (entries: Entry list) =
     table [] [

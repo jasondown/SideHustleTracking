@@ -257,6 +257,41 @@ let updateEntryHandler : HttpHandler =
                     return! htmlView errorView next ctx
         }
 
+let showDeleteConfirmHandler (entryIdStr: string) : HttpHandler =
+    fun next ctx ->
+        task {
+            match Guid.TryParse(entryIdStr) with
+            | false, _ ->
+                return! (setStatusCode 400 >=> text "Invalid entry ID") next ctx
+            | true, guid ->
+                let entryId = EntryId guid
+                match findEntryById entryId with
+                | None ->
+                    return! (setStatusCode 404 >=> text "Entry not found") next ctx
+                | Some entry ->
+                    let confirmRow = entryDeleteConfirmRow entry
+                    return! htmlView confirmRow next ctx
+        }
+
+let deleteEntryHandler (entryIdStr: string) : HttpHandler =
+    fun next ctx ->
+        task {
+            match Guid.TryParse(entryIdStr) with
+            | false, _ ->
+                return! (setStatusCode 400 >=> text "Invalid entry ID") next ctx
+            | true, guid ->
+                let entryId = EntryId guid
+                
+                // Delete the entry
+                deleteEntry entryId
+                
+                // Return entire sorted tbody
+                let allEntries = readEntries ()
+                let rows = allEntries |> List.map entryRow
+                let tbodyView = tbody [ _id "entries-tbody" ] rows
+                return! htmlView tbodyView next ctx
+        }
+
 let webApp =
     Giraffe.Core.choose [
         GET >=> route "/" >=> indexHandler
@@ -265,6 +300,8 @@ let webApp =
         GET >=> routef "/entries/%s/edit" showEditFormHandler
         GET >=> routef "/entries/%s/cancel" cancelEditHandler
         POST >=> route "/entries/update" >=> updateEntryHandler
+        GET >=> routef "/entries/%s/delete/confirm" showDeleteConfirmHandler
+        POST >=> routef "/entries/%s/delete" deleteEntryHandler
         setStatusCode 404 >=> text "Not Found"
     ]
 
