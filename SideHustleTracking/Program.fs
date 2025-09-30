@@ -25,6 +25,16 @@ type AddEntryForm = {
     fxRate: decimal
 }
 
+[<CLIMutable>]
+type EditEntryForm = {
+    id: string
+    date: string
+    start: string
+    endTime: string // Can be empty for open entries
+    usdRate: decimal
+    fxRate: decimal
+}
+
 // Validation helpers
 let parseDate (dateStr: string) : Validation<NonEmptyList<string>, DateOnly> =
     try 
@@ -146,11 +156,115 @@ let closeEntryHandler (entryIdStr: string) : HttpHandler =
                         return! (setStatusCode 400 >=> text errorMsg) next ctx
         }
 
+let showEditFormHandler (entryIdStr: string) : HttpHandler =
+    fun next ctx ->
+        task {
+            match Guid.TryParse(entryIdStr) with
+            | false, _ ->
+                return! (setStatusCode 400 >=> text "Invalid entry ID") next ctx
+            | true, guid ->
+                let entryId = EntryId guid
+                match findEntryById entryId with
+                | None ->
+                    return! (setStatusCode 404 >=> text "Entry not found") next ctx
+                | Some entry ->
+                    let formRow = entryEditFormRow entry
+                    return! htmlView formRow next ctx
+        }
+
+let cancelEditHandler (entryIdStr: string) : HttpHandler =
+    fun next ctx ->
+        task {
+            match Guid.TryParse(entryIdStr) with
+            | false, _ ->
+                return! (setStatusCode 400 >=> text "Invalid entry ID") next ctx
+            | true, guid ->
+                let entryId = EntryId guid
+                match findEntryById entryId with
+                | None ->
+                    return! (setStatusCode 404 >=> text "Entry not found") next ctx
+                | Some entry ->
+                    let row = entryRow entry
+                    return! htmlView row next ctx
+        }
+
+let updateEntryHandler : HttpHandler =
+    fun next ctx ->
+        task {
+            let! form = ctx.BindFormAsync<EditEntryForm>()
+            
+            match Guid.TryParse(form.id) with
+            | false, _ ->
+                return! (setStatusCode 400 >=> text "Invalid entry ID") next ctx
+            | true, guid ->
+                let entryId = EntryId guid
+                
+                // Validate form data
+                let validation = 
+                    (fun date start endTimeOpt usdRate fxRate ->
+                        // Create an open interval first
+                        let openInterval = {
+                            Id = entryId  // Keep the same ID
+                            Date = date
+                            Start = start
+                            UsdRate = usdRate * 1m<rate>
+                            FxCadPerUsd = fxRate * 1m<fx>
+                        }
+                        
+                        // If end time provided, close it; otherwise return as open
+                        match endTimeOpt with
+                        | Some endTime ->
+                            match close openInterval endTime with
+                            | Success closed -> Success (Closed closed)
+                            | Failure errors -> Failure errors
+                        | None ->
+                            Success (Open openInterval)
+                    )
+                    <!> parseDate form.date
+                    <*> parseTime form.start
+                    <*> parseOptionalTime form.endTime
+                    <*> validatePositive "USD Rate" form.usdRate
+                    <*> validatePositive "FX Rate" form.fxRate
+                
+                // Flatten nested validation
+                let flatValidation = 
+                    match validation with
+                    | Success (Success entry) -> Success entry
+                    | Success (Failure errors) -> Failure errors
+                    | Failure errors -> Failure errors
+                
+                match flatValidation with
+                | Success entry ->
+                    // Update the entry
+                    updateEntry entry
+                    
+                    // Return entire sorted tbody
+                    let allEntries = readEntries ()
+                    let rows = allEntries |> List.map entryRow
+                    let tbodyView = tbody [ _id "entries-tbody" ] rows
+                    return! htmlView tbodyView next ctx
+                    
+                | Failure errors ->
+                    // Return error in the row
+                    let errorList = errors |> NonEmptyList.toList
+                    let errorView = 
+                        tr [] [
+                            td [ _colspan "8"; _class "error" ] [
+                                for e in errorList do
+                                    p [] [ str e ]
+                            ]
+                        ]
+                    return! htmlView errorView next ctx
+        }
+
 let webApp =
     Giraffe.Core.choose [
         GET >=> route "/" >=> indexHandler
         POST >=> route "/entries" >=> addEntryHandler
         POST >=> routef "/entries/%s/close" closeEntryHandler
+        GET >=> routef "/entries/%s/edit" showEditFormHandler
+        GET >=> routef "/entries/%s/cancel" cancelEditHandler
+        POST >=> route "/entries/update" >=> updateEntryHandler
         setStatusCode 404 >=> text "Not Found"
     ]
 
