@@ -95,3 +95,4 @@ let writeEntries (entries: Entry list) : unit =
                 (row.TotalCad |> Option.map (sprintf "%.2f") |> Option.defaultValue "0.00"))
     
     File.WriteAllLines(path, header :: lines)
+    
