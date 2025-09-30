@@ -10,6 +10,10 @@ let getDate = function
     | Open o -> o.Date
     | Closed c -> c.Date
 
+let getStart = function
+    | Open o -> o.Start
+    | Closed c -> c.Start
+
 let isOpen = function
     | Open _ -> true
     | Closed _ -> false

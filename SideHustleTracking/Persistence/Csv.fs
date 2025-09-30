@@ -4,6 +4,7 @@ open System
 open System.IO
 open FSharp.Data
 open SideHustleTracking.Domain.Types
+open SideHustleTracking.Domain.Entry
 open SideHustleTracking.Domain.Serialization
 
 [<Literal>]
@@ -31,7 +32,7 @@ let private ensureTrailingNewline (path: string) =
         if not (String.IsNullOrEmpty content) && not (content.EndsWith Environment.NewLine) then
             File.AppendAllText(path, Environment.NewLine)
 
-// Read all entries from CSV
+// Read all entries from CSV, sorted by date DESC then start DESC
 let readEntries () : Entry list =
     let path = getDataPath ()
     ensureCsvExists path
@@ -51,6 +52,12 @@ let readEntries () : Entry list =
               TotalCad = if row.Total_cad = 0m then None else Some row.Total_cad }
         fromCsvRow csvRow)
     |> Seq.toList
+    |> List.sortByDescending (fun e -> getDate e, getStart e)
+
+// Find an entry by ID
+let findEntryById (entryId: EntryId) : Entry option =
+    readEntries ()
+    |> List.tryFind (fun e -> getId e = entryId)
 
 // Append an entry to CSV
 let appendEntry (entry: Entry) : unit =
@@ -95,4 +102,13 @@ let writeEntries (entries: Entry list) : unit =
                 (row.TotalCad |> Option.map (sprintf "%.2f") |> Option.defaultValue "0.00"))
     
     File.WriteAllLines(path, header :: lines)
-    
+
+// Update a single entry (find by ID and replace, then rewrite CSV)
+let updateEntry (updatedEntry: Entry) : unit =
+    let entries = readEntries ()
+    let newEntries =
+        entries
+        |> List.map (fun e ->
+            if getId e = getId updatedEntry then updatedEntry
+            else e)
+    writeEntries newEntries

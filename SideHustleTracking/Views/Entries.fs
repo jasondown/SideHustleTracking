@@ -71,7 +71,7 @@ let entriesTable (entries: Entry list) =
 let addEntryForm (errors: string list option) =
     let now = DateTime.Now
     form [ _hx "post" "/entries"; _hx "target" "#entries-tbody"; _hx "swap" "afterbegin" ] [
-        h2 [] [ str "Start New Entry" ]
+        h2 [] [ str "Add Entry" ]
         
         // Display errors if any
         match errors with
@@ -90,6 +90,11 @@ let addEntryForm (errors: string list option) =
         ]
         
         div [ _class "form-group" ] [
+            label [ _for "endTime" ] [ str "End Time (optional - leave blank to start tracking now)" ]
+            input [ _type "time"; _name "endTime"; _id "endTime" ]
+        ]
+        
+        div [ _class "form-group" ] [
             label [ _for "usdRate" ] [ str "Hourly Rate (USD)" ]
             input [ _type "number"; _name "usdRate"; _id "usdRate"; _step "0.01"; _min "0"; _required ]
         ]
@@ -99,7 +104,7 @@ let addEntryForm (errors: string list option) =
             input [ _type "number"; _name "fxRate"; _id "fxRate"; _step "0.0001"; _min "0"; _value "1.35"; _required ]
         ]
         
-        button [ _type "submit" ] [ str "Start Entry" ]
+        button [ _type "submit" ] [ str "Add Entry" ]
     ]
 
 let indexView (entries: Entry list) =
