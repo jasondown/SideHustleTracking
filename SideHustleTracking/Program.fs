@@ -10,7 +10,6 @@ open Giraffe.ViewEngine
 open FSharpPlus.Data
 open SideHustleTracking.Domain.UnitsOfMeasure
 open SideHustleTracking.Domain.Types
-open SideHustleTracking.Domain.Entry
 open SideHustleTracking.Domain.Calculations
 open SideHustleTracking.Persistence.Csv
 open SideHustleTracking.Views.Entries
@@ -56,7 +55,7 @@ let parseOptionalTime (timeStr: string) : Validation<NonEmptyList<string>, TimeO
 
 let validatePositive (name: string) (value: decimal) : Validation<NonEmptyList<string>, decimal> =
     if value > 0m then Success value
-    else Failure (NonEmptyList.singleton (sprintf "%s must be positive" name))
+    else Failure (NonEmptyList.singleton $"%s{name} must be positive")
 
 // Handlers
 let indexHandler : HttpHandler =
@@ -293,7 +292,7 @@ let deleteEntryHandler (entryIdStr: string) : HttpHandler =
         }
 
 let webApp =
-    Giraffe.Core.choose [
+    choose [
         GET >=> route "/" >=> indexHandler
         POST >=> route "/entries" >=> addEntryHandler
         POST >=> routef "/entries/%s/close" closeEntryHandler

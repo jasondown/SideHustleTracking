@@ -4,7 +4,6 @@ open System
 open Giraffe.ViewEngine
 open SideHustleTracking.Domain.Types
 open SideHustleTracking.Domain.UnitsOfMeasure
-open SideHustleTracking.Domain.Entry
 
 // Helper to create htmx attributes
 let private _hx (name: string) (value: string) = attr ("hx-" + name) value
@@ -28,25 +27,25 @@ let entryRow (entry: Entry) =
             td [] [ str (formatDate o.Date) ]
             td [] [ str (formatTime o.Start) ]
             td [] [ str "-" ]
-            td [] [ str (sprintf "$%s" (formatDecimal (stripRate o.UsdRate))) ]
+            td [] [ str $"$%s{formatDecimal (stripRate o.UsdRate)}" ]
             td [] [ str (formatDecimal (stripFx o.FxCadPerUsd)) ]
             td [] [ str "-" ]
             td [] [ str "-" ]
             td [] [ 
                 button [ 
-                    _hx "post" (sprintf "/entries/%s/close" (guid.ToString()))
+                    _hx "post" $"/entries/%s{guid.ToString()}/close"
                     _hx "target" "#entries-tbody"
                     _hx "swap" "outerHTML"
                     _style "margin-right: 5px;"
                 ] [ str "Stop" ]
                 button [
-                    _hx "get" (sprintf "/entries/%s/edit" (guid.ToString()))
+                    _hx "get" $"/entries/%s{guid.ToString()}/edit"
                     _hx "target" "closest tr"
                     _hx "swap" "outerHTML"
                     _style "margin-right: 5px;"
                 ] [ str "Edit" ]
                 button [
-                    _hx "get" (sprintf "/entries/%s/delete/confirm" (guid.ToString()))
+                    _hx "get" $"/entries/%s{guid.ToString()}/delete/confirm"
                     _hx "target" "closest tr"
                     _hx "swap" "outerHTML"
                     _style "background: #dc3545;"
@@ -59,19 +58,19 @@ let entryRow (entry: Entry) =
             td [] [ str (formatDate c.Date) ]
             td [] [ str (formatTime c.Start) ]
             td [] [ str (formatTime c.End) ]
-            td [] [ str (sprintf "$%s" (formatDecimal (stripRate c.UsdRate))) ]
+            td [] [ str $"$%s{formatDecimal (stripRate c.UsdRate)}" ]
             td [] [ str (formatDecimal (stripFx c.FxCadPerUsd)) ]
             td [] [ str (formatDecimal (stripHours c.Hours)) ]
-            td [] [ str (sprintf "$%s" (formatDecimal (stripCad c.TotalCad))) ]
+            td [] [ str $"$%s{formatDecimal (stripCad c.TotalCad)}" ]
             td [] [ 
                 button [
-                    _hx "get" (sprintf "/entries/%s/edit" (guid.ToString()))
+                    _hx "get" $"/entries/%s{guid.ToString()}/edit"
                     _hx "target" "closest tr"
                     _hx "swap" "outerHTML"
                     _style "margin-right: 5px;"
                 ] [ str "Edit" ]
                 button [
-                    _hx "get" (sprintf "/entries/%s/delete/confirm" (guid.ToString()))
+                    _hx "get" $"/entries/%s{guid.ToString()}/delete/confirm"
                     _hx "target" "closest tr"
                     _hx "swap" "outerHTML"
                     _style "background: #dc3545;"
@@ -80,7 +79,7 @@ let entryRow (entry: Entry) =
         ]
 
 let entryEditFormRow (entry: Entry) =
-    let (entryId, date, start, endTimeOpt, usdRate, fxRate) =
+    let entryId, date, start, endTimeOpt, usdRate, fxRate =
         match entry with
         | Open o -> 
             (o.Id, o.Date, o.Start, None, o.UsdRate, o.FxCadPerUsd)
@@ -130,7 +129,7 @@ let entryEditFormRow (entry: Entry) =
                     button [ _type "submit"; _style "margin-right: 5px;" ] [ str "Save" ]
                     button [ 
                         _type "button"
-                        _hx "get" (sprintf "/entries/%s/cancel" (guid.ToString()))
+                        _hx "get" $"/entries/%s{guid.ToString()}/cancel"
                         _hx "target" "closest tr"
                         _hx "swap" "outerHTML"
                     ] [ str "Cancel" ]
@@ -140,7 +139,7 @@ let entryEditFormRow (entry: Entry) =
     ]
     
 let entryDeleteConfirmRow (entry: Entry) =
-    let (entryId, date, start, endTimeOpt) =
+    let entryId, date, start, endTimeOpt =
         match entry with
         | Open o -> (o.Id, o.Date, o.Start, None)
         | Closed c -> (c.Id, c.Date, c.Start, Some c.End)
@@ -148,24 +147,24 @@ let entryDeleteConfirmRow (entry: Entry) =
     let (EntryId guid) = entryId
     let entryDesc = 
         match endTimeOpt with
-        | Some endTime -> 
-            sprintf "%s from %s to %s" (formatDate date) (formatTime start) (formatTime endTime)
+        | Some endTime ->
+            $"%s{formatDate date} from %s{formatTime start} to %s{formatTime endTime}"
         | None ->
-            sprintf "%s starting at %s (open)" (formatDate date) (formatTime start)
-    
+            $"%s{formatDate date} starting at %s{formatTime start} (open)"
+
     tr [ _class "error" ] [
         td [ _colspan "8"; _style "padding: 20px;" ] [
             p [ _style "margin: 0 0 10px 0; font-weight: bold;" ] [ 
-                str (sprintf "Delete this entry: %s?" entryDesc)
+                str $"Delete this entry: %s{entryDesc}?"
             ]
             button [
-                _hx "post" (sprintf "/entries/%s/delete" (guid.ToString()))
+                _hx "post" $"/entries/%s{guid.ToString()}/delete"
                 _hx "target" "#entries-tbody"
                 _hx "swap" "outerHTML"
                 _style "margin-right: 10px; background: #dc3545;"
             ] [ str "Yes, Delete" ]
             button [
-                _hx "get" (sprintf "/entries/%s/cancel" (guid.ToString()))
+                _hx "get" $"/entries/%s{guid.ToString()}/cancel"
                 _hx "target" "closest tr"
                 _hx "swap" "outerHTML"
             ] [ str "Cancel" ]

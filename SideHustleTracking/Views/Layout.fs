@@ -7,7 +7,7 @@ let layout (pageTitle: string) (content: XmlNode list) =
         head [] [
             meta [ _charset "utf-8" ]
             meta [ _name "viewport"; _content "width=device-width, initial-scale=1" ]
-            title [] [ str (sprintf "Side Hustle Tracker - %s" pageTitle) ]
+            title [] [ str $"Side Hustle Tracker - %s{pageTitle}" ]
             // Simple CSS for basic styling
             style [] [
                 rawText """
