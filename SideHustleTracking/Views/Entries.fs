@@ -81,6 +81,9 @@ let entryRow (entry: Entry) =
                         [ str "Delete" ] ] ]
 
 let entryEditFormRow (entry: Entry) =
+
+    let now = DateTime.Now
+
     let entryId, date, start, endTimeOpt, usdRate, fxRate =
         match entry with
         | Open o -> (o.Id, o.Date, o.Start, None, o.UsdRate, o.FxCadPerUsd)
@@ -104,7 +107,12 @@ let entryEditFormRow (entry: Entry) =
                           [ div
                                 [ _class "form-group"; _style "margin: 0;" ]
                                 [ label [ _for "date" ] [ str "Date" ]
-                                  input [ _type "date"; _name "date"; _value (formatDate date); _required ] ]
+                                  input
+                                      [ _type "date"
+                                        _name "date"
+                                        _value (formatDate date)
+                                        _max (now.ToString("yyyy-MM-dd"))
+                                        _required ] ]
 
                             div
                                 [ _class "form-group"; _style "margin: 0;" ]
@@ -222,6 +230,7 @@ let addEntryForm (errors: string list option) =
                       _name "date"
                       _id "date-input"
                       _value (now.ToString("yyyy-MM-dd"))
+                      _max (now.ToString("yyyy-MM-dd"))
                       _required
                       attr "onchange" "fetchFxRate()" ] ]
 

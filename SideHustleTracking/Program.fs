@@ -9,12 +9,30 @@ open Microsoft.Extensions.DependencyInjection
 open Giraffe
 open Giraffe.ViewEngine
 open FSharpPlus.Data
+open NodaTime
 open SideHustleTracking.Domain.UnitsOfMeasure
 open SideHustleTracking.Domain.Types
 open SideHustleTracking.Domain.Calculations
 open SideHustleTracking.Persistence.Csv
 open SideHustleTracking.Views.Entries
 open SideHustleTracking.Services.FxRates
+
+// Helper to get today's date in America/Toronto timezone
+let getTodayInToronto () =
+    let torontoZone = DateTimeZoneProviders.Tzdb["America/Toronto"]
+    let now = SystemClock.Instance.GetCurrentInstant()
+    let zonedNow = now.InZone(torontoZone)
+    DateOnly.FromDateTime(zonedNow.ToDateTimeUnspecified())
+
+let validateNotFuture (date: DateOnly) : Validation<NonEmptyList<string>, DateOnly> =
+    let today = getTodayInToronto ()
+
+    if date > today then
+        Failure(
+            NonEmptyList.singleton (sprintf "Date cannot be in the future (today is %s)" (today.ToString("yyyy-MM-dd")))
+        )
+    else
+        Success date
 
 // Helper to get configured paths
 let getCsvPath (ctx: Microsoft.AspNetCore.Http.HttpContext) =
@@ -50,9 +68,14 @@ type EditEntryForm =
 // Validation helpers
 let parseDate (dateStr: string) : Validation<NonEmptyList<string>, DateOnly> =
     try
-        Success(DateOnly.Parse(dateStr))
+        let parsed = DateOnly.Parse(dateStr)
+        // Chain validation: parse then check not future
+        Success parsed
     with _ ->
         Failure(NonEmptyList.singleton "Invalid date format")
+
+let parseDateNotFuture (dateStr: string) : Validation<NonEmptyList<string>, DateOnly> =
+    parseDate dateStr |> Validation.bind validateNotFuture
 
 let parseTime (timeStr: string) : Validation<NonEmptyList<string>, TimeOnly> =
     try
@@ -103,7 +126,7 @@ let addEntryHandler: HttpHandler =
                         | Success closed -> Success(Closed closed)
                         | Failure errors -> Failure errors
                     | None -> Success(Open openInterval))
-                <!> parseDate form.date
+                <!> parseDateNotFuture form.date // Changed here
                 <*> parseTime form.start
                 <*> parseOptionalTime form.endTime
                 <*> validatePositive "USD Rate" form.usdRate
@@ -234,7 +257,7 @@ let updateEntryHandler: HttpHandler =
                             | Success closed -> Success(Closed closed)
                             | Failure errors -> Failure errors
                         | None -> Success(Open openInterval))
-                    <!> parseDate form.date
+                    <!> parseDateNotFuture form.date // Changed here
                     <*> parseTime form.start
                     <*> parseOptionalTime form.endTime
                     <*> validatePositive "USD Rate" form.usdRate
@@ -318,13 +341,18 @@ let getFxRateHandler (dateStr: string) : HttpHandler =
             match DateOnly.TryParse(dateStr) with
             | false, _ -> return! (setStatusCode 400 >=> text "Invalid date format") next ctx
             | true, date ->
-                let! rateOpt = lookupRate apiBaseUrl fxSnapshotDir date
+                let today = getTodayInToronto ()
 
-                match rateOpt with
-                | Some rate ->
-                    let rounded = roundRate rate
-                    return! text (string rounded) next ctx
-                | None -> return! (setStatusCode 500 >=> text "Could not fetch FX rate") next ctx
+                if date > today then
+                    return! (setStatusCode 400 >=> text "Cannot fetch rates for future dates") next ctx
+                else
+                    let! rateOpt = lookupRate apiBaseUrl fxSnapshotDir date
+
+                    match rateOpt with
+                    | Some rate ->
+                        let rounded = roundRate rate
+                        return! text (string rounded) next ctx
+                    | None -> return! (setStatusCode 500 >=> text "Could not fetch FX rate") next ctx
         }
 
 let webApp =
