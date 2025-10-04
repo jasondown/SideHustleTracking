@@ -220,9 +220,10 @@ let addEntryForm (errors: string list option) =
                 input
                     [ _type "date"
                       _name "date"
-                      _id "date"
+                      _id "date-input"
                       _value (now.ToString("yyyy-MM-dd"))
-                      _required ] ]
+                      _required
+                      attr "onchange" "fetchFxRate()" ] ]
 
           div
               [ _class "form-group" ]
@@ -257,12 +258,33 @@ let addEntryForm (errors: string list option) =
                     [ _type "number"
                       _name "fxRate"
                       _id "fxRate"
-                      _step "0.0001"
+                      _step "0.01"
                       _min "0"
                       _value "1.35"
-                      _required ] ]
+                      _required ]
+                small
+                    [ _style "display: block; color: #666; margin-top: 4px;" ]
+                    [ str "(Auto-fetched when you select a date, but you can override it)" ] ]
 
-          button [ _type "submit" ] [ str "Add Entry" ] ]
+          button [ _type "submit" ] [ str "Add Entry" ]
+
+          script
+              []
+              [ rawText
+                    """
+function fetchFxRate() {
+    const date = document.getElementById('date-input').value;
+    if (date) {
+        fetch('/fx/' + date)
+            .then(r => r.text())
+            .then(rate => {
+                document.getElementById('fxRate').value = rate;
+            });
+    }
+}
+// Fetch on page load for today's date
+fetchFxRate();
+""" ] ]
 
 let indexView (entries: Entry list) =
     Layout.layout

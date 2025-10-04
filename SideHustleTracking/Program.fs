@@ -4,6 +4,7 @@ open System
 open Microsoft.AspNetCore.Builder
 open Microsoft.AspNetCore.Hosting
 open Microsoft.Extensions.Hosting
+open Microsoft.Extensions.Configuration
 open Microsoft.Extensions.DependencyInjection
 open Giraffe
 open Giraffe.ViewEngine
@@ -13,6 +14,20 @@ open SideHustleTracking.Domain.Types
 open SideHustleTracking.Domain.Calculations
 open SideHustleTracking.Persistence.Csv
 open SideHustleTracking.Views.Entries
+open SideHustleTracking.Services.FxRates
+
+// Helper to get configured paths
+let getCsvPath (ctx: Microsoft.AspNetCore.Http.HttpContext) =
+    let config = ctx.GetService<IConfiguration>()
+    config["DataPaths:EntriesCsv"]
+
+let getFxSnapshotDir (ctx: Microsoft.AspNetCore.Http.HttpContext) =
+    let config = ctx.GetService<IConfiguration>()
+    config["DataPaths:FxSnapshotDir"]
+
+let getFxApiUrl (ctx: Microsoft.AspNetCore.Http.HttpContext) =
+    let config = ctx.GetService<IConfiguration>()
+    config["FxApiUrl"]
 
 // Form binding models
 [<CLIMutable>]
@@ -60,7 +75,8 @@ let validatePositive (name: string) (value: decimal) : Validation<NonEmptyList<s
 // Handlers
 let indexHandler: HttpHandler =
     fun next ctx ->
-        let entries = readEntries ()
+        let csvPath = getCsvPath ctx
+        let entries = readEntries csvPath
         let view = indexView entries
         htmlView view next ctx
 
@@ -103,10 +119,11 @@ let addEntryHandler: HttpHandler =
             match flatValidation with
             | Success entry ->
                 // Save the entry
-                appendEntry entry
+                let csvPath = getCsvPath ctx
+                appendEntry csvPath entry
 
                 // Return full entries list view for consistency
-                let allEntries = readEntries ()
+                let allEntries = readEntries csvPath
                 let view = entriesListView allEntries
                 return! htmlView view next ctx
 
@@ -126,12 +143,14 @@ let addEntryHandler: HttpHandler =
 let closeEntryHandler (entryIdStr: string) : HttpHandler =
     fun next ctx ->
         task {
+            let csvPath = getCsvPath ctx
+
             match Guid.TryParse(entryIdStr) with
             | false, _ -> return! (setStatusCode 400 >=> text "Invalid entry ID") next ctx
             | true, guid ->
                 let entryId = EntryId guid
 
-                match findEntryById entryId with
+                match findEntryById csvPath entryId with
                 | None -> return! (setStatusCode 404 >=> text "Entry not found") next ctx
                 | Some(Closed _) -> return! (setStatusCode 400 >=> text "Entry already closed") next ctx
                 | Some(Open openInterval) ->
@@ -141,10 +160,10 @@ let closeEntryHandler (entryIdStr: string) : HttpHandler =
                     match close openInterval now with
                     | Success closedInterval ->
                         let closedEntry = Closed closedInterval
-                        updateEntry closedEntry
+                        updateEntry csvPath closedEntry
 
                         // Return full entries list view (handles empty state)
-                        let allEntries = readEntries ()
+                        let allEntries = readEntries csvPath
                         let view = entriesListView allEntries
                         return! htmlView view next ctx
                     | Failure errors ->
@@ -156,12 +175,14 @@ let closeEntryHandler (entryIdStr: string) : HttpHandler =
 let showEditFormHandler (entryIdStr: string) : HttpHandler =
     fun next ctx ->
         task {
+            let csvPath = getCsvPath ctx
+
             match Guid.TryParse(entryIdStr) with
             | false, _ -> return! (setStatusCode 400 >=> text "Invalid entry ID") next ctx
             | true, guid ->
                 let entryId = EntryId guid
 
-                match findEntryById entryId with
+                match findEntryById csvPath entryId with
                 | None -> return! (setStatusCode 404 >=> text "Entry not found") next ctx
                 | Some entry ->
                     let formRow = entryEditFormRow entry
@@ -171,12 +192,14 @@ let showEditFormHandler (entryIdStr: string) : HttpHandler =
 let cancelEditHandler (entryIdStr: string) : HttpHandler =
     fun next ctx ->
         task {
+            let csvPath = getCsvPath ctx
+
             match Guid.TryParse(entryIdStr) with
             | false, _ -> return! (setStatusCode 400 >=> text "Invalid entry ID") next ctx
             | true, guid ->
                 let entryId = EntryId guid
 
-                match findEntryById entryId with
+                match findEntryById csvPath entryId with
                 | None -> return! (setStatusCode 404 >=> text "Entry not found") next ctx
                 | Some entry ->
                     let row = entryRow entry
@@ -227,10 +250,11 @@ let updateEntryHandler: HttpHandler =
                 match flatValidation with
                 | Success entry ->
                     // Update the entry
-                    updateEntry entry
+                    let csvPath = getCsvPath ctx
+                    updateEntry csvPath entry
 
                     // Return full entries list view (handles empty state)
-                    let allEntries = readEntries ()
+                    let allEntries = readEntries csvPath
                     let view = entriesListView allEntries
                     return! htmlView view next ctx
 
@@ -252,12 +276,14 @@ let updateEntryHandler: HttpHandler =
 let showDeleteConfirmHandler (entryIdStr: string) : HttpHandler =
     fun next ctx ->
         task {
+            let csvPath = getCsvPath ctx
+
             match Guid.TryParse(entryIdStr) with
             | false, _ -> return! (setStatusCode 400 >=> text "Invalid entry ID") next ctx
             | true, guid ->
                 let entryId = EntryId guid
 
-                match findEntryById entryId with
+                match findEntryById csvPath entryId with
                 | None -> return! (setStatusCode 404 >=> text "Entry not found") next ctx
                 | Some entry ->
                     let confirmRow = entryDeleteConfirmRow entry
@@ -267,23 +293,44 @@ let showDeleteConfirmHandler (entryIdStr: string) : HttpHandler =
 let deleteEntryHandler (entryIdStr: string) : HttpHandler =
     fun next ctx ->
         task {
+            let csvPath = getCsvPath ctx
+
             match Guid.TryParse(entryIdStr) with
             | false, _ -> return! (setStatusCode 400 >=> text "Invalid entry ID") next ctx
             | true, guid ->
                 let entryId = EntryId guid
 
                 // Delete the entry
-                deleteEntry entryId
+                deleteEntry csvPath entryId
 
                 // Return full entries list view (handles empty state)
-                let allEntries = readEntries ()
+                let allEntries = readEntries csvPath
                 let view = entriesListView allEntries
                 return! htmlView view next ctx
+        }
+
+let getFxRateHandler (dateStr: string) : HttpHandler =
+    fun next ctx ->
+        task {
+            let apiBaseUrl = getFxApiUrl ctx
+            let fxSnapshotDir = getFxSnapshotDir ctx
+
+            match DateOnly.TryParse(dateStr) with
+            | false, _ -> return! (setStatusCode 400 >=> text "Invalid date format") next ctx
+            | true, date ->
+                let! rateOpt = lookupRate apiBaseUrl fxSnapshotDir date
+
+                match rateOpt with
+                | Some rate ->
+                    let rounded = roundRate rate
+                    return! text (string rounded) next ctx
+                | None -> return! (setStatusCode 500 >=> text "Could not fetch FX rate") next ctx
         }
 
 let webApp =
     choose
         [ GET >=> route "/" >=> indexHandler
+          GET >=> routef "/fx/%s" getFxRateHandler
           POST >=> route "/entries" >=> addEntryHandler
           POST >=> routef "/entries/%s/close" closeEntryHandler
           GET >=> routef "/entries/%s/edit" showEditFormHandler

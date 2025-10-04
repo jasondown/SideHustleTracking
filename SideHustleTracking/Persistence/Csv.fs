@@ -12,16 +12,17 @@ let SampleCsvPath = __SOURCE_DIRECTORY__ + "/../../data/sample_entries.csv"
 
 type EntriesCsv = CsvProvider<SampleCsvPath, HasHeaders=true>
 
-// Get the data file path (relative to executing directory)
-let private getDataPath () =
-    Path.Combine(Directory.GetCurrentDirectory(), "..", "data", "entries.csv")
+// Resolve the full CSV path from a relative path
+let private resolveFullPath (relativePath: string) =
+    Path.Combine(Directory.GetCurrentDirectory(), relativePath)
 
 // Ensure the CSV file exists with headers
 let private ensureCsvExists (path: string) =
     let dir = Path.GetDirectoryName path
+
     if not (Directory.Exists dir) then
         Directory.CreateDirectory dir |> ignore
-    
+
     if not (File.Exists path) then
         File.WriteAllLines(path, [| "id,date,start,end,usd_rate_per_hour,fx_cad_per_usd,hours,total_cad" |])
 
@@ -29,19 +30,21 @@ let private ensureCsvExists (path: string) =
 let private ensureTrailingNewline (path: string) =
     if File.Exists path then
         let content = File.ReadAllText path
+
         if not (String.IsNullOrEmpty content) && not (content.EndsWith Environment.NewLine) then
             File.AppendAllText(path, Environment.NewLine)
 
 // Read all entries from CSV, sorted by date DESC then start DESC
-let readEntries () : Entry list =
-    let path = getDataPath ()
+let readEntries (csvPath: string) : Entry list =
+    let path = resolveFullPath csvPath
     ensureCsvExists path
-    
+
     let csv = EntriesCsv.Load(path)
+
     csv.Rows
     |> Seq.map (fun row ->
         // Convert from type provider inferred types to CsvRow strings
-        let csvRow : CsvRow =
+        let csvRow: CsvRow =
             { Id = row.Id.ToString()
               Date = row.Date.ToString("yyyy-MM-dd")
               Start = row.Start.ToString(@"hh\:mm")
@@ -50,24 +53,26 @@ let readEntries () : Entry list =
               FxCadPerUsd = row.Fx_cad_per_usd
               Hours = if row.Hours = 0m then None else Some row.Hours
               TotalCad = if row.Total_cad = 0m then None else Some row.Total_cad }
+
         fromCsvRow csvRow)
     |> Seq.toList
     |> List.sortByDescending (fun e -> getDate e, getStart e)
 
 // Find an entry by ID
-let findEntryById (entryId: EntryId) : Entry option =
-    readEntries ()
-    |> List.tryFind (fun e -> getId e = entryId)
+let findEntryById (csvPath: string) (entryId: EntryId) : Entry option =
+    readEntries csvPath |> List.tryFind (fun e -> getId e = entryId)
 
 // Append an entry to CSV
-let appendEntry (entry: Entry) : unit =
-    let path = getDataPath ()
+let appendEntry (csvPath: string) (entry: Entry) : unit =
+    let path = resolveFullPath csvPath
     ensureCsvExists path
-    ensureTrailingNewline path  // Make sure existing file ends with newline
-    
+    ensureTrailingNewline path // Make sure existing file ends with newline
+
     let row = toCsvRow entry
-    let line = 
-        sprintf "%s,%s,%s,%s,%M,%M,%s,%s"
+
+    let line =
+        sprintf
+            "%s,%s,%s,%s,%M,%M,%s,%s"
             row.Id
             row.Date
             row.Start
@@ -76,22 +81,26 @@ let appendEntry (entry: Entry) : unit =
             row.FxCadPerUsd
             (row.Hours |> Option.map (sprintf "%.2f") |> Option.defaultValue "0.00")
             (row.TotalCad |> Option.map (sprintf "%.2f") |> Option.defaultValue "0.00")
-    
+
     File.AppendAllLines(path, [| line |])
 
 // Overwrite entire CSV with list of entries
-let writeEntries (entries: Entry list) : unit =
-    let path = getDataPath ()
+let writeEntries (csvPath: string) (entries: Entry list) : unit =
+    let path = resolveFullPath csvPath
     let dir = Path.GetDirectoryName path
+
     if not (Directory.Exists dir) then
         Directory.CreateDirectory dir |> ignore
-    
+
     let header = "id,date,start,end,usd_rate_per_hour,fx_cad_per_usd,hours,total_cad"
+
     let lines =
         entries
         |> List.map (fun entry ->
             let row = toCsvRow entry
-            sprintf "%s,%s,%s,%s,%M,%M,%s,%s"
+
+            sprintf
+                "%s,%s,%s,%s,%M,%M,%s,%s"
                 row.Id
                 row.Date
                 row.Start
@@ -100,23 +109,21 @@ let writeEntries (entries: Entry list) : unit =
                 row.FxCadPerUsd
                 (row.Hours |> Option.map (sprintf "%.2f") |> Option.defaultValue "0.00")
                 (row.TotalCad |> Option.map (sprintf "%.2f") |> Option.defaultValue "0.00"))
-    
+
     File.WriteAllLines(path, header :: lines)
 
 // Update a single entry (find by ID and replace, then rewrite CSV)
-let updateEntry (updatedEntry: Entry) : unit =
-    let entries = readEntries ()
+let updateEntry (csvPath: string) (updatedEntry: Entry) : unit =
+    let entries = readEntries csvPath
+
     let newEntries =
         entries
-        |> List.map (fun e ->
-            if getId e = getId updatedEntry then updatedEntry
-            else e)
-    writeEntries newEntries
+        |> List.map (fun e -> if getId e = getId updatedEntry then updatedEntry else e)
+
+    writeEntries csvPath newEntries
 
 // Delete a single entry (find by ID and remove, then rewrite CSV)
-let deleteEntry (entryId: EntryId) : unit =
-    let entries = readEntries ()
-    let newEntries =
-        entries
-        |> List.filter (fun e -> getId e <> entryId)
-    writeEntries newEntries
+let deleteEntry (csvPath: string) (entryId: EntryId) : unit =
+    let entries = readEntries csvPath
+    let newEntries = entries |> List.filter (fun e -> getId e <> entryId)
+    writeEntries csvPath newEntries
