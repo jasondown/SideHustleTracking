@@ -75,4 +75,4 @@ let lookupRate (apiBaseUrl: string) (fxSnapshotDir: string) (date: DateOnly) : A
     }
 
 /// Round rate to 2 decimal places for display/form
-let roundRate (rate: decimal) : decimal = Math.Round(rate, 2)c
+let roundRate (rate: decimal) : decimal = Math.Round(rate, 2)
