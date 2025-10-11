@@ -32,6 +32,23 @@ let getNowInToronto () : DateOnly * TimeOnly =
     let local = zonedNow.ToDateTimeUnspecified()
     DateOnly.FromDateTime(local), TimeOnly.FromDateTime(local)
 
+let errorMessage (title: string) (errors: string list) =
+    div
+        [ _id "error-container"
+          _class "error"
+          _style
+              "background-color: #fee; padding: 1rem; margin-bottom: 1rem; border: 1px solid #f00; position: relative;" ]
+        [ button
+              [ _type "button"
+                _style
+                    "position: absolute; right: 0.5rem; top: 0.5rem; background: #f00; color: white; border: none; padding: 0.25rem 0.5rem; cursor: pointer;"
+                _onclick "document.getElementById('error-container').remove()" ]
+              [ str "×" ]
+          if not (String.IsNullOrEmpty(title)) then
+              h3 [] [ str title ]
+          for e in errors do
+              p [] [ str e ] ]
+
 // Simple "crosses midnight" helper for DateOnly
 let crossesMidnight (startDate: DateOnly) (endDate: DateOnly) = endDate > startDate
 
@@ -165,31 +182,27 @@ let addEntryHandler: HttpHandler =
                 // Save the entry
                 appendEntry csvPath entry
 
-                // Return full entries list view
+                // Return full entries list view with script to clear form
                 let updatedEntries = readEntries csvPath
-                let view = entriesListView updatedEntries
+
+                let view =
+                    div
+                        []
+                        [ entriesListView updatedEntries
+                          script [] [ rawText "document.getElementById('add-entry-form').reset();" ] ]
+
                 return! htmlView view next ctx
 
             | Failure errors ->
-                // Return the full page with error message at the top
+                // Return the full page with dismissible error message at the top
                 let errorList = errors |> NonEmptyList.toList
 
                 let viewWithError =
-                    div
-                        []
-                        [ div
-                              [ _class "error"
-                                _style
-                                    "background-color: #fee; padding: 1rem; margin-bottom: 1rem; border: 1px solid #f00;" ]
-                              [ h3 [] [ str "Error adding entry:" ]
-                                for e in errorList do
-                                    p [] [ str e ] ]
-                          entriesListView allEntries ]
+                    div [] [ errorMessage "Error adding entry:" errorList; entriesListView allEntries ]
 
                 return! htmlView viewWithError next ctx
         }
 
-// UPDATED closeEntryHandler (Imp-B style with guards & units fix)
 let closeEntryHandler (entryIdStr: string) : HttpHandler =
     fun next ctx ->
         task {
@@ -222,16 +235,7 @@ let closeEntryHandler (entryIdStr: string) : HttpHandler =
                             let allEntries = readEntries csvPath
 
                             let viewWithError =
-                                div
-                                    []
-                                    [ div
-                                          [ _class "error"
-                                            _style
-                                                "background-color: #fee; padding: 1rem; margin-bottom: 1rem; border: 1px solid #f00;" ]
-                                          [ h3 [] [ str "Error closing entry:" ]
-                                            for e in errorList do
-                                                p [] [ str e ] ]
-                                      entriesListView allEntries ]
+                                div [] [ errorMessage "Error closing entry:" errorList; entriesListView allEntries ]
 
                             return! htmlView viewWithError next ctx
                     else
@@ -249,23 +253,24 @@ let closeEntryHandler (entryIdStr: string) : HttpHandler =
                                     spanDays
 
                             let viewWithError =
-                                div
-                                    []
-                                    [ div
-                                          [ _class "error"
-                                            _style
-                                                "background-color: #fee; padding: 1rem; margin-bottom: 1rem; border: 1px solid #f00;" ]
-                                          [ p [] [ str message ] ]
-                                      entriesListView allEntries ]
+                                div [] [ errorMessage "" [ message ]; entriesListView allEntries ]
 
                             return! htmlView viewWithError next ctx
-
                         else
                             // Need FX for the new day (today)
                             let! fxRateOpt = lookupRate fxApiUrl fxSnapshotDir todayDate
 
                             match fxRateOpt with
-                            | None -> return! (setStatusCode 500 >=> text "Could not fetch FX rate for today") next ctx
+                            | None ->
+                                let allEntries = readEntries csvPath
+
+                                let viewWithError =
+                                    div
+                                        []
+                                        [ errorMessage "Error" [ "Could not fetch FX rate for today" ]
+                                          entriesListView allEntries ]
+
+                                return! htmlView viewWithError next ctx
                             | Some fxRate ->
                                 // Units-safe rounding/tagging
                                 let roundedFx: decimal<fx> = LanguagePrimitives.DecimalWithMeasure(roundRate fxRate)
@@ -279,13 +284,7 @@ let closeEntryHandler (entryIdStr: string) : HttpHandler =
                                     let viewWithError =
                                         div
                                             []
-                                            [ div
-                                                  [ _class "error"
-                                                    _style
-                                                        "background-color: #fee; padding: 1rem; margin-bottom: 1rem; border: 1px solid #f00;" ]
-                                                  [ h3 [] [ str "Error splitting entry:" ]
-                                                    for e in errorList do
-                                                        p [] [ str e ] ]
+                                            [ errorMessage "Error splitting entry:" errorList
                                               entriesListView allEntries ]
 
                                     return! htmlView viewWithError next ctx
@@ -303,9 +302,36 @@ let closeEntryHandler (entryIdStr: string) : HttpHandler =
                                         for e in restEntries do
                                             appendEntry csvPath (Closed e)
 
-                                        // Return full entries list view
+                                        // Return full entries list view with success message
                                         let allEntries = readEntries csvPath
-                                        let view = entriesListView allEntries
+
+                                        // Create success message
+                                        let splitDates =
+                                            closedIntervals
+                                            |> List.map _.Date.ToString("MMM dd")
+                                            |> String.concat " and "
+
+                                        let successMsg =
+                                            div
+                                                [ _id "success-container"
+                                                  _class "success"
+                                                  _style
+                                                      "background-color: #d4edda; padding: 1rem; margin-bottom: 1rem; border: 1px solid #28a745; position: relative;" ]
+                                                [ button
+                                                      [ _type "button"
+                                                        _style
+                                                            "position: absolute; right: 0.5rem; top: 0.5rem; background: #28a745; color: white; border: none; padding: 0.25rem 0.5rem; cursor: pointer;"
+                                                        _onclick "document.getElementById('success-container').remove()" ]
+                                                      [ str "×" ]
+                                                  p
+                                                      []
+                                                      [ str $"Entry successfully split across midnight ({splitDates})." ]
+                                                  small
+                                                      [ _style "color: #666;" ]
+                                                      [ str
+                                                            "Note: Cross-midnight splits may lose up to 1 minute of tracked time." ] ]
+
+                                        let view = div [] [ successMsg; entriesListView allEntries ]
                                         return! htmlView view next ctx
         }
 
@@ -347,6 +373,7 @@ let updateEntryHandler: HttpHandler =
     fun next ctx ->
         task {
             let! form = ctx.BindFormAsync<EditEntryForm>()
+            let csvPath = getCsvPath ctx
 
             match Guid.TryParse(form.id) with
             | false, _ -> return! (setStatusCode 400 >=> text "Invalid entry ID") next ctx
@@ -371,7 +398,7 @@ let updateEntryHandler: HttpHandler =
                             | Success closed -> Success(Closed closed)
                             | Failure errors -> Failure errors
                         | None -> Success(Open openInterval))
-                    <!> parseDateNotFuture form.date // Changed here
+                    <!> parseDateNotFuture form.date
                     <*> parseTime form.start
                     <*> parseOptionalTime form.endTime
                     <*> validatePositive "USD Rate" form.usdRate
@@ -387,27 +414,22 @@ let updateEntryHandler: HttpHandler =
                 match flatValidation with
                 | Success entry ->
                     // Update the entry
-                    let csvPath = getCsvPath ctx
                     updateEntry csvPath entry
 
-                    // Return full entries list view (handles empty state)
+                    // Return full entries list view
                     let allEntries = readEntries csvPath
                     let view = entriesListView allEntries
                     return! htmlView view next ctx
 
                 | Failure errors ->
-                    // Return error in the row
+                    // Return full table with error message at top
                     let errorList = errors |> NonEmptyList.toList
+                    let allEntries = readEntries csvPath
 
-                    let errorView =
-                        tr
-                            []
-                            [ td
-                                  [ _colspan "8"; _class "error" ]
-                                  [ for e in errorList do
-                                        p [] [ str e ] ] ]
+                    let viewWithError =
+                        div [] [ errorMessage "Error updating entry:" errorList; entriesListView allEntries ]
 
-                    return! htmlView errorView next ctx
+                    return! htmlView viewWithError next ctx
         }
 
 let showDeleteConfirmHandler (entryIdStr: string) : HttpHandler =
