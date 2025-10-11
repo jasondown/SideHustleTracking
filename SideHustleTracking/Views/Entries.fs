@@ -214,7 +214,10 @@ let addEntryForm (errors: string list option) =
     let now = DateTime.Now
 
     form
-        [ _hx "post" "/entries"; _hx "target" "#entries-list"; _hx "swap" "outerHTML" ]
+        [ _id "add-entry-form"
+          _hx "post" "/entries"
+          _hx "target" "#entries-list"
+          _hx "swap" "outerHTML" ]
         [ h2 [] [ str "Add Entry" ]
 
           // Display errors if any
