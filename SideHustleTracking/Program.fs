@@ -24,6 +24,17 @@ let getTodayInToronto () =
     let zonedNow = now.InZone(torontoZone)
     DateOnly.FromDateTime(zonedNow.ToDateTimeUnspecified())
 
+// Helper to get current date AND time in America/Toronto timezone
+let getNowInToronto () : DateOnly * TimeOnly =
+    let torontoZone = DateTimeZoneProviders.Tzdb["America/Toronto"]
+    let now = SystemClock.Instance.GetCurrentInstant()
+    let zonedNow = now.InZone(torontoZone)
+    let local = zonedNow.ToDateTimeUnspecified()
+    DateOnly.FromDateTime(local), TimeOnly.FromDateTime(local)
+
+// Simple "crosses midnight" helper for DateOnly
+let crossesMidnight (startDate: DateOnly) (endDate: DateOnly) = endDate > startDate
+
 let validateNotFuture (date: DateOnly) : Validation<NonEmptyList<string>, DateOnly> =
     let today = getTodayInToronto ()
 
@@ -163,10 +174,13 @@ let addEntryHandler: HttpHandler =
                 return! htmlView errorView next ctx
         }
 
+// UPDATED closeEntryHandler (Imp-B style with guards & units fix)
 let closeEntryHandler (entryIdStr: string) : HttpHandler =
     fun next ctx ->
         task {
             let csvPath = getCsvPath ctx
+            let fxApiUrl = getFxApiUrl ctx
+            let fxSnapshotDir = getFxSnapshotDir ctx
 
             match Guid.TryParse(entryIdStr) with
             | false, _ -> return! (setStatusCode 400 >=> text "Invalid entry ID") next ctx
@@ -177,22 +191,65 @@ let closeEntryHandler (entryIdStr: string) : HttpHandler =
                 | None -> return! (setStatusCode 404 >=> text "Entry not found") next ctx
                 | Some(Closed _) -> return! (setStatusCode 400 >=> text "Entry already closed") next ctx
                 | Some(Open openInterval) ->
-                    // Close with current time
-                    let now = TimeOnly.FromDateTime(DateTime.Now)
+                    // Current date/time in Toronto
+                    let todayDate, currentTime = getNowInToronto ()
 
-                    match close openInterval now with
-                    | Success closedInterval ->
-                        let closedEntry = Closed closedInterval
-                        updateEntry csvPath closedEntry
+                    // If same day: close normally right away
+                    if not (crossesMidnight openInterval.Date todayDate) then
+                        match close openInterval currentTime with
+                        | Success closedInterval ->
+                            updateEntry csvPath (Closed closedInterval)
+                            let allEntries = readEntries csvPath
+                            let view = entriesListView allEntries
+                            return! htmlView view next ctx
+                        | Failure errors ->
+                            let errorList = errors |> NonEmptyList.toList
+                            let errorMsg = String.concat "; " errorList
+                            return! (setStatusCode 400 >=> text errorMsg) next ctx
+                    else
+                        // Multi-day safety guard (fast-fail before doing FX I/O)
+                        let spanDays = todayDate.DayNumber - openInterval.Date.DayNumber
 
-                        // Return full entries list view (handles empty state)
-                        let allEntries = readEntries csvPath
-                        let view = entriesListView allEntries
-                        return! htmlView view next ctx
-                    | Failure errors ->
-                        let errorList = errors |> NonEmptyList.toList
-                        let errorMsg = String.concat "; " errorList
-                        return! (setStatusCode 400 >=> text errorMsg) next ctx
+                        if spanDays > 1 then
+                            return!
+                                (setStatusCode 400
+                                 >=> text "Entry spans multiple days. Please close entries daily.")
+                                    next
+                                    ctx
+                        else
+                            // Need FX for the new day (today)
+                            let! fxRateOpt = lookupRate fxApiUrl fxSnapshotDir todayDate
+
+                            match fxRateOpt with
+                            | None -> return! (setStatusCode 500 >=> text "Could not fetch FX rate for today") next ctx
+                            | Some fxRate ->
+                                // Units-safe rounding/tagging
+                                let roundedFx: decimal<fx> = LanguagePrimitives.DecimalWithMeasure(roundRate fxRate)
+
+                                // Split across midnight using domain function
+                                match splitCrossMidnight openInterval todayDate currentTime roundedFx with
+                                | Failure errors ->
+                                    let errorList = errors |> NonEmptyList.toList
+                                    let errorMsg = String.concat "; " errorList
+                                    return! (setStatusCode 400 >=> text errorMsg) next ctx
+
+                                | Success closedIntervals ->
+                                    match closedIntervals with
+                                    | [] ->
+                                        return!
+                                            (setStatusCode 500 >=> text "Unexpected: no entries from split") next ctx
+                                    | firstEntry :: restEntries ->
+                                        // Update the original with the first day's closed interval
+                                        updateEntry csvPath (Closed firstEntry)
+
+                                        // Append the rest (subsequent days)
+                                        for e in restEntries do
+                                            appendEntry csvPath (Closed e)
+
+                                        // Return full entries list view
+                                        let allEntries = readEntries csvPath
+                                        let view = entriesListView allEntries
+                                        return! htmlView view next ctx
         }
 
 let showEditFormHandler (entryIdStr: string) : HttpHandler =
