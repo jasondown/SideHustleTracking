@@ -133,11 +133,18 @@ let addEntryHandler: HttpHandler =
                     // If end time provided, close it; otherwise return as open
                     match endTimeOpt with
                     | Some endTime ->
-                        match close openInterval endTime with
-                        | Success closed -> Success(Closed closed)
-                        | Failure errors -> Failure errors
+                        // Check if end time is "before" start (likely crosses midnight)
+                        if endTime < start then
+                            Failure(
+                                NonEmptyList.singleton
+                                    "End time appears to be before start time. For entries crossing midnight, please stop the timer after midnight instead of entering the end time."
+                            )
+                        else
+                            match close openInterval endTime with
+                            | Success closed -> Success(Closed closed)
+                            | Failure errors -> Failure errors
                     | None -> Success(Open openInterval))
-                <!> parseDateNotFuture form.date // Changed here
+                <!> parseDateNotFuture form.date
                 <*> parseTime form.start
                 <*> parseOptionalTime form.endTime
                 <*> validatePositive "USD Rate" form.usdRate
@@ -150,28 +157,36 @@ let addEntryHandler: HttpHandler =
                 | Success(Failure errors) -> Failure errors
                 | Failure errors -> Failure errors
 
+            let csvPath = getCsvPath ctx
+            let allEntries = readEntries csvPath
+
             match flatValidation with
             | Success entry ->
                 // Save the entry
-                let csvPath = getCsvPath ctx
                 appendEntry csvPath entry
 
-                // Return full entries list view for consistency
-                let allEntries = readEntries csvPath
-                let view = entriesListView allEntries
+                // Return full entries list view
+                let updatedEntries = readEntries csvPath
+                let view = entriesListView updatedEntries
                 return! htmlView view next ctx
 
             | Failure errors ->
-                // Return error message for htmx
+                // Return the full page with error message at the top
                 let errorList = errors |> NonEmptyList.toList
 
-                let errorView =
+                let viewWithError =
                     div
-                        [ _class "error" ]
-                        [ for e in errorList do
-                              p [] [ str e ] ]
+                        []
+                        [ div
+                              [ _class "error"
+                                _style
+                                    "background-color: #fee; padding: 1rem; margin-bottom: 1rem; border: 1px solid #f00;" ]
+                              [ h3 [] [ str "Error adding entry:" ]
+                                for e in errorList do
+                                    p [] [ str e ] ]
+                          entriesListView allEntries ]
 
-                return! htmlView errorView next ctx
+                return! htmlView viewWithError next ctx
         }
 
 // UPDATED closeEntryHandler (Imp-B style with guards & units fix)
@@ -204,18 +219,47 @@ let closeEntryHandler (entryIdStr: string) : HttpHandler =
                             return! htmlView view next ctx
                         | Failure errors ->
                             let errorList = errors |> NonEmptyList.toList
-                            let errorMsg = String.concat "; " errorList
-                            return! (setStatusCode 400 >=> text errorMsg) next ctx
+                            let allEntries = readEntries csvPath
+
+                            let viewWithError =
+                                div
+                                    []
+                                    [ div
+                                          [ _class "error"
+                                            _style
+                                                "background-color: #fee; padding: 1rem; margin-bottom: 1rem; border: 1px solid #f00;" ]
+                                          [ h3 [] [ str "Error closing entry:" ]
+                                            for e in errorList do
+                                                p [] [ str e ] ]
+                                      entriesListView allEntries ]
+
+                            return! htmlView viewWithError next ctx
                     else
                         // Multi-day safety guard (fast-fail before doing FX I/O)
                         let spanDays = todayDate.DayNumber - openInterval.Date.DayNumber
 
                         if spanDays > 1 then
-                            return!
-                                (setStatusCode 400
-                                 >=> text "Entry spans multiple days. Please close entries daily.")
-                                    next
-                                    ctx
+                            // Return error with the table still visible
+                            let allEntries = readEntries csvPath
+
+                            let message =
+                                sprintf
+                                    "Cannot close entry from %s. Entry spans %i days. Please close entries daily."
+                                    (openInterval.Date.ToString("yyyy-MM-dd"))
+                                    spanDays
+
+                            let viewWithError =
+                                div
+                                    []
+                                    [ div
+                                          [ _class "error"
+                                            _style
+                                                "background-color: #fee; padding: 1rem; margin-bottom: 1rem; border: 1px solid #f00;" ]
+                                          [ p [] [ str message ] ]
+                                      entriesListView allEntries ]
+
+                            return! htmlView viewWithError next ctx
+
                         else
                             // Need FX for the new day (today)
                             let! fxRateOpt = lookupRate fxApiUrl fxSnapshotDir todayDate
@@ -230,8 +274,21 @@ let closeEntryHandler (entryIdStr: string) : HttpHandler =
                                 match splitCrossMidnight openInterval todayDate currentTime roundedFx with
                                 | Failure errors ->
                                     let errorList = errors |> NonEmptyList.toList
-                                    let errorMsg = String.concat "; " errorList
-                                    return! (setStatusCode 400 >=> text errorMsg) next ctx
+                                    let allEntries = readEntries csvPath
+
+                                    let viewWithError =
+                                        div
+                                            []
+                                            [ div
+                                                  [ _class "error"
+                                                    _style
+                                                        "background-color: #fee; padding: 1rem; margin-bottom: 1rem; border: 1px solid #f00;" ]
+                                                  [ h3 [] [ str "Error splitting entry:" ]
+                                                    for e in errorList do
+                                                        p [] [ str e ] ]
+                                              entriesListView allEntries ]
+
+                                    return! htmlView viewWithError next ctx
 
                                 | Success closedIntervals ->
                                     match closedIntervals with
