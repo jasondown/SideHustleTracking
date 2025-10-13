@@ -184,6 +184,15 @@ let monthlyReportView (summary: MonthlySummary) (detailedEntries: ClosedInterval
         [ _id "report-content" ]
         [ monthNavigation summary.Month today
 
+          // Link to yearly view for this month's year
+          div
+              [ _style "text-align: center; margin-bottom: 20px;" ]
+              [ a
+                    [ _href $"/reports/yearly/{summary.Month.Year}"
+                      _style
+                          "padding: 8px 16px; background: #17a2b8; color: white; text-decoration: none; border-radius: 4px; display: inline-block;" ]
+                    [ str $"↑ View Full Year {summary.Month.Year}" ] ]
+
           // Summary cards
           div
               [ _style "display: flex; gap: 20px; margin-bottom: 30px;" ]
