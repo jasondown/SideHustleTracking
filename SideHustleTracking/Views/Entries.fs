@@ -299,6 +299,8 @@ fetchFxRate();
 """ ] ]
 
 let indexView (entries: Entry list) =
+    let now = DateTime.Now
+
     Layout.layout
         "Time Entries"
         [ // Navigation bar
@@ -312,10 +314,16 @@ let indexView (entries: Entry list) =
                     [ str "Time Entries" ]
 
                 a
-                    [ _href "/reports"
+                    [ _href $"/reports/monthly/{now.Year}/{now.Month}"
                       _style
                           "padding: 10px 20px; background: #6c757d; color: white; text-decoration: none; border-radius: 4px;" ]
-                    [ str "Monthly Reports" ] ]
+                    [ str "Monthly Report" ]
+
+                a
+                    [ _href $"/reports/yearly/{now.Year}"
+                      _style
+                          "padding: 10px 20px; background: #6c757d; color: white; text-decoration: none; border-radius: 4px;" ]
+                    [ str "Yearly Report" ] ]
 
           h1 [] [ str "Side Hustle Time Tracker" ]
 

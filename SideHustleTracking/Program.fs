@@ -528,19 +528,40 @@ let monthlyReportHandler (year: int, month: int) : HttpHandler =
                     return! htmlView view next ctx
         }
 
-let currentMonthReportHandler: HttpHandler =
+let yearlyReportHandler (year: int) : HttpHandler =
     fun next ctx ->
-        let today = getTodayInToronto ()
-        let currentMonth = YearMonth.Current(today)
-        // Redirect to the current month's report
-        redirectTo false $"/reports/monthly/{currentMonth.Year}/{currentMonth.Month}" next ctx
+        task {
+            let csvPath = getCsvPath ctx
+            let today = getTodayInToronto ()
 
-// Update the webApp to include new routes
+            // Check if year is in future
+            if isYearInFuture year today then
+                return! (setStatusCode 400 >=> text "Cannot view future years") next ctx
+            else
+                // Load all entries and create yearly report
+                let allEntries = readEntries csvPath
+                let summary = createYearlySummary year allEntries
+
+                // Check if this is an htmx request (partial update) or full page load
+                let isHtmxRequest = ctx.Request.Headers.ContainsKey("HX-Request")
+
+                let view =
+                    if isHtmxRequest then
+                        // Return just the report content div for htmx swap
+                        yearlyReportView summary today
+                    else
+                        // Return full page for direct navigation
+                        yearlyReportPage summary today
+
+                return! htmlView view next ctx
+        }
+
+// Update the webApp routes
 let webApp =
     choose
         [ GET >=> route "/" >=> indexHandler
-          GET >=> route "/reports" >=> currentMonthReportHandler
           GET >=> routef "/reports/monthly/%i/%i" monthlyReportHandler
+          GET >=> routef "/reports/yearly/%i" yearlyReportHandler
           GET >=> routef "/fx/%s" getFxRateHandler
           POST >=> route "/entries" >=> addEntryHandler
           POST >=> routef "/entries/%s/close" closeEntryHandler
