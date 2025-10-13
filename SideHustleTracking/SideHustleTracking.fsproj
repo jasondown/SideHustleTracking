@@ -9,6 +9,7 @@
         <Compile Include="Domain\Types.fs"/>
         <Compile Include="Domain\Calculations.fs"/>
         <Compile Include="Domain\Entry.fs"/>
+        <Compile Include="Domain\Reports.fs"/>
         <Compile Include="Domain\Serialization.fs"/>
         <Compile Include="Persistence\Csv.fs"/>
         <Compile Include="Services\FxRates.fs"/>
