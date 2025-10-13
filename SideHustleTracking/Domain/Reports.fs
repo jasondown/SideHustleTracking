@@ -41,6 +41,19 @@ type MonthlySummary =
       TotalCad: decimal<CAD>
       EntryCount: int }
 
+type MonthInYear =
+    { YearMonth: YearMonth
+      TotalHours: decimal<h>
+      TotalCad: decimal<CAD>
+      EntryCount: int }
+
+type YearlySummary =
+    { Year: int
+      MonthlyBreakdown: MonthInYear list // All 12 months (some may be empty)
+      TotalHours: decimal<h>
+      TotalCad: decimal<CAD>
+      EntryCount: int }
+
 /// Keep only closed entries (reports shouldn't include open entries)
 let onlyClosedEntries (entries: Entry list) : ClosedInterval list =
     entries
@@ -65,7 +78,7 @@ let aggregateByDate (entries: ClosedInterval list) : DailySummary list =
           TotalHours = totalHours
           TotalCad = totalCad
           EntryCount = List.length dayEntries })
-    |> List.sortBy _.Date
+    |> List.sortBy _.Date // ascending (day 1 -> 31)
 
 /// Create a monthly summary with day-by-day breakdown
 let createMonthlySummary (ym: YearMonth) (entries: Entry list) : MonthlySummary =
@@ -100,3 +113,56 @@ let isMonthInFuture (ym: YearMonth) (today: DateOnly) : bool = compareYearMonthT
 /// Convenience helpers for month navigation (delegate to YearMonth methods)
 let previousMonth (ym: YearMonth) : YearMonth = ym.Previous()
 let nextMonth (ym: YearMonth) : YearMonth = ym.Next()
+
+// ----------------------
+// Yearly aggregation
+// ----------------------
+
+/// Create a MonthInYear for a month with no entries
+let private emptyMonthInYear (ym: YearMonth) : MonthInYear =
+    { YearMonth = ym
+      TotalHours = 0m<h>
+      TotalCad = 0m<CAD>
+      EntryCount = 0 }
+
+/// Group all closed entries once by YearMonth for fast yearly summary
+let private groupByYearMonth (entries: Entry list) : Map<YearMonth, ClosedInterval list> =
+    entries
+    |> onlyClosedEntries
+    |> List.groupBy (fun e -> YearMonth.FromDate e.Date)
+    |> Map.ofList
+
+/// Create a yearly summary with all 12 months (uses grouped data for O(n) aggregation)
+let createYearlySummary (year: int) (entries: Entry list) : YearlySummary =
+    let byYm = groupByYearMonth entries
+
+    let monthlyBreakdown =
+        [ 1..12 ]
+        |> List.map (fun m ->
+            let ym = { Year = year; Month = m }
+
+            match Map.tryFind ym byYm with
+            | None -> emptyMonthInYear ym
+            | Some monthEntries ->
+                { YearMonth = ym
+                  TotalHours = monthEntries |> List.sumBy _.Hours
+                  TotalCad = monthEntries |> List.sumBy _.TotalCad
+                  EntryCount = monthEntries.Length })
+
+    { Year = year
+      MonthlyBreakdown = monthlyBreakdown
+      TotalHours = monthlyBreakdown |> List.sumBy _.TotalHours
+      TotalCad = monthlyBreakdown |> List.sumBy _.TotalCad
+      EntryCount = monthlyBreakdown |> List.sumBy _.EntryCount }
+
+/// Get all years that have entries (newest first)
+let getYearsWithEntries (entries: Entry list) : int list =
+    entries
+    |> List.choose (function
+        | Closed c -> Some c.Date.Year
+        | Open _ -> None)
+    |> List.distinct
+    |> List.sortDescending
+
+/// True if the given year is strictly after the current year
+let isYearInFuture (year: int) (today: DateOnly) : bool = year > today.Year
