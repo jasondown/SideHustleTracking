@@ -222,13 +222,22 @@ let monthlyReportPage (summary: MonthlySummary) (detailedEntries: ClosedInterval
 
     Layout.layout
         pageTitle
-        [ div
-              [ _style "display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;" ]
-              [ h1 [] [ str "Monthly Report" ]
-                a
+        [ // Navigation bar
+          div
+              [ _style
+                    "display: flex; gap: 10px; margin-bottom: 20px; padding-bottom: 20px; border-bottom: 2px solid #dee2e6;" ]
+              [ a
                     [ _href "/"
                       _style
                           "padding: 10px 20px; background: #6c757d; color: white; text-decoration: none; border-radius: 4px;" ]
-                    [ str "← Back to Entries" ] ]
+                    [ str "Time Entries" ]
+
+                a
+                    [ _href "/reports"
+                      _style
+                          "padding: 10px 20px; background: #007bff; color: white; text-decoration: none; border-radius: 4px; font-weight: 600;" ]
+                    [ str "Monthly Reports" ] ]
+
+          h1 [] [ str "Monthly Report" ]
 
           monthlyReportView summary detailedEntries today ]
