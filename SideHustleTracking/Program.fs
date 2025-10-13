@@ -13,9 +13,11 @@ open NodaTime
 open SideHustleTracking.Domain.UnitsOfMeasure
 open SideHustleTracking.Domain.Types
 open SideHustleTracking.Domain.Calculations
+open SideHustleTracking.Domain.Reports
 open SideHustleTracking.Persistence.Csv
-open SideHustleTracking.Views.Entries
 open SideHustleTracking.Services.FxRates
+open SideHustleTracking.Views.Entries
+open SideHustleTracking.Views.Reports
 
 // Helper to get today's date in America/Toronto timezone
 let getTodayInToronto () =
@@ -491,9 +493,54 @@ let getFxRateHandler (dateStr: string) : HttpHandler =
                     | None -> return! (setStatusCode 500 >=> text "Could not fetch FX rate") next ctx
         }
 
+let monthlyReportHandler (year: int, month: int) : HttpHandler =
+    fun next ctx ->
+        task {
+            let csvPath = getCsvPath ctx
+            let today = getTodayInToronto ()
+
+            // Validate the year/month
+            if month < 1 || month > 12 then
+                return! (setStatusCode 400 >=> text "Invalid month") next ctx
+            else
+                let yearMonth = { Year = year; Month = month }
+
+                // Check if month is in future
+                if isMonthInFuture yearMonth today then
+                    return! (setStatusCode 400 >=> text "Cannot view future months") next ctx
+                else
+                    // Load all entries and create report
+                    let allEntries = readEntries csvPath
+                    let summary = createMonthlySummary yearMonth allEntries
+                    let detailedEntries = getMonthlyEntries yearMonth allEntries
+
+                    // Check if this is a htmx request (partial update) or full page load
+                    let isHtmxRequest = ctx.Request.Headers.ContainsKey("HX-Request")
+
+                    let view =
+                        if isHtmxRequest then
+                            // Return just the report content div for htmx swap
+                            monthlyReportView summary detailedEntries today
+                        else
+                            // Return full page for direct navigation
+                            monthlyReportPage summary detailedEntries today
+
+                    return! htmlView view next ctx
+        }
+
+let currentMonthReportHandler: HttpHandler =
+    fun next ctx ->
+        let today = getTodayInToronto ()
+        let currentMonth = YearMonth.Current(today)
+        // Redirect to the current month's report
+        redirectTo false $"/reports/monthly/{currentMonth.Year}/{currentMonth.Month}" next ctx
+
+// Update the webApp to include new routes
 let webApp =
     choose
         [ GET >=> route "/" >=> indexHandler
+          GET >=> route "/reports" >=> currentMonthReportHandler
+          GET >=> routef "/reports/monthly/%i/%i" monthlyReportHandler
           GET >=> routef "/fx/%s" getFxRateHandler
           POST >=> route "/entries" >=> addEntryHandler
           POST >=> routef "/entries/%s/close" closeEntryHandler
