@@ -15,6 +15,7 @@
         <Compile Include="Services\FxRates.fs"/>
         <Compile Include="Views\Layout.fs"/>
         <Compile Include="Views\Entries.fs"/>
+        <Compile Include="Views\Reports.fs"/>
         <Compile Include="Program.fs"/>
     </ItemGroup>
 
