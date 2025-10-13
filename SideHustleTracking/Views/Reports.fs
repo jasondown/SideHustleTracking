@@ -233,11 +233,219 @@ let monthlyReportPage (summary: MonthlySummary) (detailedEntries: ClosedInterval
                     [ str "Time Entries" ]
 
                 a
-                    [ _href "/reports"
+                    [ _href $"/reports/monthly/%d{summary.Month.Year}/%d{summary.Month.Month}"
                       _style
                           "padding: 10px 20px; background: #007bff; color: white; text-decoration: none; border-radius: 4px; font-weight: 600;" ]
-                    [ str "Monthly Reports" ] ]
+                    [ str "Monthly Report" ]
+
+                a
+                    [ _href $"/reports/yearly/%d{summary.Month.Year}"
+                      _style
+                          "padding: 10px 20px; background: #6c757d; color: white; text-decoration: none; border-radius: 4px;" ]
+                    [ str "Yearly Report" ] ]
 
           h1 [] [ str "Monthly Report" ]
 
           monthlyReportView summary detailedEntries today ]
+
+// -----------------------------
+// Yearly Report Views
+// -----------------------------
+
+let private yearNavigation (currentYear: int) (today: DateOnly) =
+    let prevYear = currentYear - 1
+    let nextYear = currentYear + 1
+    let isCurrentYear = currentYear = today.Year
+    let isNextYearFuture = isYearInFuture nextYear today
+
+    div
+        [ _class "year-navigation"
+          _style "display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;" ]
+        [
+          // Previous year button
+          button
+              [ _hx "get" ("/reports/yearly/" + string prevYear)
+                _hx "target" "#report-content"
+                _hx "swap" "outerHTML"
+                _ariaLabel ("Go to year " + string prevYear)
+                _style "padding: 8px 16px;" ]
+              [ str ("← " + string prevYear) ]
+
+          // Current year with link to monthly view
+          h2
+              [ _style (
+                    if isCurrentYear then
+                        "color: #007bff; font-weight: bold;"
+                    else
+                        ""
+                ) ]
+              [ str (string currentYear)
+                if isCurrentYear then
+                    span [ _style "font-size: 14px; margin-left: 10px; color: #28a745;" ] [ str "(Current)" ] ]
+
+          // Next year button (disabled if it would be in future)
+          if isNextYearFuture then
+              button
+                  [ _disabled
+                    _style "padding: 8px 16px; opacity: 0.5; cursor: not-allowed;"
+                    _ariaLabel "Next year is in the future" ]
+                  [ str "→ Future" ]
+          else
+              button
+                  [ _hx "get" ("/reports/yearly/" + string nextYear)
+                    _hx "target" "#report-content"
+                    _hx "swap" "outerHTML"
+                    _ariaLabel ("Go to year " + string nextYear)
+                    _style "padding: 8px 16px;" ]
+                  [ str (string nextYear + " →") ] ]
+
+let private monthlyGrid (summary: YearlySummary) (today: DateOnly) =
+    let isCurrentMonth (ym: YearMonth) =
+        ym.Year = today.Year && ym.Month = today.Month
+
+    let isFutureMonth (ym: YearMonth) = isMonthInFuture ym today
+
+    div
+        [ _style
+              "display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; margin: 30px 0;" ]
+        [ for month in summary.MonthlyBreakdown do
+              let monthName =
+                  DateOnly(month.YearMonth.Year, month.YearMonth.Month, 1).ToString("MMMM")
+
+              let bgColor =
+                  if month.EntryCount = 0 then "#f8f9fa"
+                  elif isCurrentMonth month.YearMonth then "#e3f2fd"
+                  else "#fff"
+
+              let borderColor =
+                  if isCurrentMonth month.YearMonth then "#007bff"
+                  elif month.EntryCount > 0 then "#28a745"
+                  else "#dee2e6"
+
+              if isFutureMonth month.YearMonth then
+                  // Future month - disabled card
+                  div
+                      [ _class "month-card"
+                        _style
+                            "padding: 20px; background: #f8f9fa; border: 2px solid #dee2e6; border-radius: 8px; opacity: 0.5;" ]
+                      [ h3 [ _style "margin: 0 0 15px 0; color: #999;" ] [ str monthName ]
+                        p [ _style "color: #999; font-style: italic;" ] [ str "Future" ] ]
+              elif month.EntryCount = 0 then
+                  // Empty month - no link
+                  div
+                      [ _class "month-card"
+                        _style
+                            $"padding: 20px; background: %s{bgColor}; border: 2px solid %s{borderColor}; border-radius: 8px;" ]
+                      [ h3 [ _style "margin: 0 0 15px 0;" ] [ str monthName ]
+                        p [ _style "color: #999; font-style: italic;" ] [ str "No entries" ] ]
+              else
+                  // Month with data - clickable
+                  a
+                      [ _href $"/reports/monthly/%d{month.YearMonth.Year}/%d{month.YearMonth.Month}"
+                        _class "month-card-link"
+                        _style "text-decoration: none; color: inherit; display: block;" ]
+                      [ div
+                            [ _class "month-card"
+                              _style
+                                  $"padding: 20px; background: %s{bgColor}; border: 2px solid %s{borderColor}; border-radius: 8px; cursor: pointer; transition: transform 0.2s, box-shadow 0.2s;"
+                              attr
+                                  "onmouseover"
+                                  "this.style.transform='translateY(-2px)'; this.style.boxShadow='0 4px 12px rgba(0,0,0,0.15)';"
+                              attr "onmouseout" "this.style.transform=''; this.style.boxShadow='';" ]
+                            [ h3
+                                  [ _style (
+                                        sprintf
+                                            "margin: 0 0 15px 0; color: %s;"
+                                            (if isCurrentMonth month.YearMonth then "#007bff" else "#333")
+                                    ) ]
+                                  [ str monthName
+                                    if isCurrentMonth month.YearMonth then
+                                        span
+                                            [ _style "font-size: 12px; margin-left: 8px; color: #28a745;" ]
+                                            [ str "(Current)" ] ]
+
+                              div
+                                  [ _style "space-y: 8px;" ]
+                                  [ div
+                                        [ _style "display: flex; justify-content: space-between; margin-bottom: 8px;" ]
+                                        [ span [ _style "color: #666;" ] [ str "Hours:" ]
+                                          span [ _style "font-weight: 600;" ] [ str (formatHours month.TotalHours) ] ]
+
+                                    div
+                                        [ _style "display: flex; justify-content: space-between; margin-bottom: 8px;" ]
+                                        [ span [ _style "color: #666;" ] [ str "Earned:" ]
+                                          span
+                                              [ _style "font-weight: 600; color: #28a745;" ]
+                                              [ str (formatCad month.TotalCad) ] ]
+
+                                    div
+                                        [ _style "display: flex; justify-content: space-between;" ]
+                                        [ span [ _style "color: #666;" ] [ str "Entries:" ]
+                                          span [] [ str (string month.EntryCount) ] ] ] ] ] ]
+
+let yearlyReportView (summary: YearlySummary) (today: DateOnly) =
+    div
+        [ _id "report-content" ]
+        [ yearNavigation summary.Year today
+
+          // Year summary cards
+          div
+              [ _style "display: flex; gap: 20px; margin-bottom: 30px;" ]
+              [ div
+                    [ _class "summary-card"
+                      _style "flex: 1; padding: 20px; background: #f8f9fa; border-radius: 8px;" ]
+                    [ h3 [ _style "margin: 0 0 10px 0; color: #666; font-size: 14px;" ] [ str "Total Hours" ]
+                      p
+                          [ _style "margin: 0; font-size: 32px; font-weight: bold;" ]
+                          [ str (formatHours summary.TotalHours) ] ]
+
+                div
+                    [ _class "summary-card"
+                      _style "flex: 1; padding: 20px; background: #d4edda; border-radius: 8px;" ]
+                    [ h3 [ _style "margin: 0 0 10px 0; color: #666; font-size: 14px;" ] [ str "Total Earned (CAD)" ]
+                      p
+                          [ _style "margin: 0; font-size: 32px; font-weight: bold; color: #28a745;" ]
+                          [ str (formatCad summary.TotalCad) ] ]
+
+                div
+                    [ _class "summary-card"
+                      _style "flex: 1; padding: 20px; background: #f8f9fa; border-radius: 8px;" ]
+                    [ h3 [ _style "margin: 0 0 10px 0; color: #666; font-size: 14px;" ] [ str "Total Entries" ]
+                      p [ _style "margin: 0; font-size: 32px; font-weight: bold;" ] [ str (string summary.EntryCount) ] ] ]
+
+          // Monthly grid
+          h3 [] [ str "Monthly Breakdown" ]
+          monthlyGrid summary today ]
+
+// Full page view for yearly report
+let yearlyReportPage (summary: YearlySummary) (today: DateOnly) =
+    let pageTitle = $"Yearly Report - %d{summary.Year}"
+
+    Layout.layout
+        pageTitle
+        [
+          // Navigation bar
+          div
+              [ _style
+                    "display: flex; gap: 10px; margin-bottom: 20px; padding-bottom: 20px; border-bottom: 2px solid #dee2e6;" ]
+              [ a
+                    [ _href "/"
+                      _style
+                          "padding: 10px 20px; background: #6c757d; color: white; text-decoration: none; border-radius: 4px;" ]
+                    [ str "Time Entries" ]
+
+                a
+                    [ _href $"/reports/monthly/%d{today.Year}/%d{today.Month}"
+                      _style
+                          "padding: 10px 20px; background: #6c757d; color: white; text-decoration: none; border-radius: 4px;" ]
+                    [ str "Monthly Report" ]
+
+                a
+                    [ _href $"/reports/yearly/%d{summary.Year}"
+                      _style
+                          "padding: 10px 20px; background: #007bff; color: white; text-decoration: none; border-radius: 4px; font-weight: 600;" ]
+                    [ str "Yearly Report" ] ]
+
+          h1 [] [ str $"Yearly Report - %d{summary.Year}" ]
+
+          yearlyReportView summary today ]
