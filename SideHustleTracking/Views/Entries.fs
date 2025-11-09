@@ -204,7 +204,31 @@ let entriesTable (entries: Entry list) =
 
 let entriesListView (entries: Entry list) =
     div
-        [ _id "entries-list" ]
+        [ _id "entries-list"
+          // Only refocus when the request came from the Add Entry form
+          attr
+              "hx-on::after-settle"
+              "
+            (function(){
+              var e = window.$event || window.event;
+              var d = e && e.detail || {};
+              var initiator = d.elt;
+              var isAddForm = initiator && initiator.id === 'add-entry-form';
+              if (!isAddForm) return;
+
+              // two RAFs to run after htmx focus restoration
+              requestAnimationFrame(function(){
+                requestAnimationFrame(function(){
+                  var date = document.getElementById('date-input');
+                  if (date) {
+                    try { document.activeElement && document.activeElement.blur(); } catch(_) {}
+                    date.focus();
+                    try { date.select && date.select(); } catch(_) {}
+                  }
+                });
+              });
+            })();
+          " ]
         [ if List.isEmpty entries then
               p [] [ str "No entries yet. Start tracking your time!" ]
           else
@@ -232,6 +256,7 @@ let addEntryForm (errors: string list option) =
                     [ _type "date"
                       _name "date"
                       _id "date-input"
+                      attr "autofocus" "autofocus"
                       _value (now.ToString("yyyy-MM-dd"))
                       _max (now.ToString("yyyy-MM-dd"))
                       _required
@@ -249,8 +274,11 @@ let addEntryForm (errors: string list option) =
 
           div
               [ _class "form-group" ]
-              [ label [ _for "endTime" ] [ str "End Time (optional - leave blank to start tracking now)" ]
-                input [ _type "time"; _name "endTime"; _id "endTime" ] ]
+              [ label [ _for "endTime" ] [ str "End Time (optional)" ]
+                input [ _type "time"; _name "endTime"; _id "endTime" ]
+                small
+                    [ _style "display: block; color: #666; margin-top: 4px;" ]
+                    [ str "(Leave blank to start tracking now)" ] ]
 
           div
               [ _class "form-group" ]
@@ -296,6 +324,22 @@ function fetchFxRate() {
 }
 // Fetch on page load for today's date
 fetchFxRate();
+
+// After any htmx settle of #entries-list, put focus back on the date field
+document.body.addEventListener('htmx:afterSettle', function (evt) {
+    const target = evt.detail && evt.detail.target;
+    if (target && target.id === 'entries-list') {
+        // run on next tick so it wins over htmx's own focus restore
+        setTimeout(() => {
+            const date = document.getElementById('date-input');
+            if (date) {
+                date.focus();
+                try { date.select && date.select(); } catch (_) {}
+            }
+        }, 0);
+    }
+});
+
 """ ] ]
 
 let indexView (entries: Entry list) =
