@@ -14,6 +14,7 @@ open SideHustleTracking.Domain.UnitsOfMeasure
 open SideHustleTracking.Domain.Types
 open SideHustleTracking.Domain.Calculations
 open SideHustleTracking.Domain.Reports
+open SideHustleTracking.Domain.Export
 open SideHustleTracking.Persistence.Csv
 open SideHustleTracking.Services.FxRates
 open SideHustleTracking.Views.Entries
@@ -528,6 +529,62 @@ let monthlyReportHandler (year: int, month: int) : HttpHandler =
                     return! htmlView view next ctx
         }
 
+let monthlyReportMarkdownHandler (year: int, month: int) : HttpHandler =
+    fun next ctx ->
+        task {
+            let csvPath = getCsvPath ctx
+            let today = getTodayInToronto ()
+
+            // Validate the year/month
+            if month < 1 || month > 12 then
+                return! (setStatusCode 400 >=> text "Invalid month") next ctx
+            else
+                let yearMonth = { Year = year; Month = month }
+
+                // Check if month is in future
+                if isMonthInFuture yearMonth today then
+                    return! (setStatusCode 400 >=> text "Cannot export future months") next ctx
+                else
+                    // Load all entries and create report
+                    let allEntries = readEntries csvPath
+                    let summary = createMonthlySummary yearMonth allEntries
+
+                    // Generate Markdown content
+                    let markdown = formatMonthlyReportAsMarkdown summary
+
+                    // Check if this is a download request or preview (htmx)
+                    let isDownload = ctx.Request.Query.ContainsKey("download")
+                    let isHtmxRequest = ctx.Request.Headers.ContainsKey("HX-Request")
+
+                    if isHtmxRequest then
+                        // For htmx preview, return just the markdown text wrapped in textarea
+                        let previewHtml =
+                            textarea
+                                [ _id "markdown-text"
+                                  _readonly
+                                  _style
+                                      "width: 100%; min-height: 400px; font-family: 'Courier New', monospace; font-size: 13px; padding: 10px; border: 1px solid #ced4da; border-radius: 4px; resize: vertical;" ]
+                                [ str markdown ]
+
+                        return! htmlView previewHtml next ctx
+                    else
+                        // Regular request - either download or inline view
+                        let filename = $"time-report-%04d{year}-%02d{month}.md"
+
+                        let disposition =
+                            if isDownload then
+                                $"attachment; filename=\"{filename}\""
+                            else
+                                $"inline; filename=\"{filename}\""
+
+                        return!
+                            (setHttpHeader "Content-Type" "text/markdown; charset=utf-8"
+                             >=> setHttpHeader "Content-Disposition" disposition
+                             >=> setBodyFromString markdown)
+                                next
+                                ctx
+        }
+
 let yearlyReportHandler (year: int) : HttpHandler =
     fun next ctx ->
         task {
@@ -561,6 +618,8 @@ let webApp =
     choose
         [ GET >=> route "/" >=> indexHandler
           GET >=> routef "/reports/monthly/%i/%i" monthlyReportHandler
+          GET
+          >=> routef "/reports/monthly/%i/%i/export/markdown" monthlyReportMarkdownHandler
           GET >=> routef "/reports/yearly/%i" yearlyReportHandler
           GET >=> routef "/fx/%s" getFxRateHandler
           POST >=> route "/entries" >=> addEntryHandler
