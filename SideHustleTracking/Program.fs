@@ -613,6 +613,56 @@ let yearlyReportHandler (year: int) : HttpHandler =
                 return! htmlView view next ctx
         }
 
+let yearlyReportMarkdownHandler (year: int) : HttpHandler =
+    fun next ctx ->
+        task {
+            let csvPath = getCsvPath ctx
+            let today = getTodayInToronto ()
+
+            // Check if year is in future
+            if isYearInFuture year today then
+                return! (setStatusCode 400 >=> text "Cannot export future years") next ctx
+            else
+                // Load all entries and create yearly report
+                let allEntries = readEntries csvPath
+                let summary = createYearlySummary year allEntries
+
+                // Generate Markdown content
+                let markdown = formatYearlyReportAsMarkdown summary
+
+                // Check if this is a download request or preview (htmx)
+                let isDownload = ctx.Request.Query.ContainsKey("download")
+                let isHtmxRequest = ctx.Request.Headers.ContainsKey("HX-Request")
+
+                if isHtmxRequest then
+                    // For htmx preview, return just the Markdown text wrapped in textarea
+                    let previewHtml =
+                        textarea
+                            [ _id "markdown-text"
+                              _readonly
+                              _style
+                                  "width: 100%; min-height: 400px; font-family: 'Courier New', monospace; font-size: 13px; padding: 10px; border: 1px solid #ced4da; border-radius: 4px; resize: vertical;" ]
+                            [ str markdown ]
+
+                    return! htmlView previewHtml next ctx
+                else
+                    // Regular request - either download or inline view
+                    let filename = $"time-report-%04d{year}.md"
+
+                    let disposition =
+                        if isDownload then
+                            $"attachment; filename=\"{filename}\""
+                        else
+                            $"inline; filename=\"{filename}\""
+
+                    return!
+                        (setHttpHeader "Content-Type" "text/markdown; charset=utf-8"
+                         >=> setHttpHeader "Content-Disposition" disposition
+                         >=> setBodyFromString markdown)
+                            next
+                            ctx
+        }
+
 // Update the webApp routes
 let webApp =
     choose
@@ -621,6 +671,7 @@ let webApp =
           GET
           >=> routef "/reports/monthly/%i/%i/export/markdown" monthlyReportMarkdownHandler
           GET >=> routef "/reports/yearly/%i" yearlyReportHandler
+          GET >=> routef "/reports/yearly/%i/export/markdown" yearlyReportMarkdownHandler
           GET >=> routef "/fx/%s" getFxRateHandler
           POST >=> route "/entries" >=> addEntryHandler
           POST >=> routef "/entries/%s/close" closeEntryHandler

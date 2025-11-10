@@ -38,7 +38,7 @@ let private formatUsdRate (r: decimal<rate>) : string = "$" + formatDecimal (r /
 let private formatFxRate (fx: decimal<fx>) : string = formatDecimal (fx / 1m<fx>)
 
 // -----------------------------
-// Export section
+// Export section (monthly)
 // -----------------------------
 
 let private exportSection (ym: YearMonth) =
@@ -94,17 +94,16 @@ let private exportSection (ym: YearMonth) =
 
                 p
                     [ _style "font-size: 12px; color: #6c757d; margin-bottom: 10px;" ]
-                    [ str "Copy the text below or click 'Select All' to copy to clipboard:" ]
+                    [ str "Copy the text below or click 'Copy to Clipboard':" ]
 
                 button
                     [ _type "button"
                       _style
                           "margin-bottom: 10px; padding: 5px 12px; background: #17a2b8; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;"
-                      attr
-                          "onclick"
-                          "const textarea = document.getElementById('markdown-text'); textarea.select(); document.execCommand('copy');"
-                      _ariaLabel "Select all markdown text" ]
-                    [ str "📋 Select All & Copy" ]
+                      // modern clipboard API
+                      attr "onclick" "navigator.clipboard.writeText(document.getElementById('markdown-text').value)"
+                      _ariaLabel "Copy markdown text to clipboard" ]
+                    [ str "📋 Copy to Clipboard" ]
 
                 textarea
                     [ _id "markdown-text"
@@ -113,6 +112,84 @@ let private exportSection (ym: YearMonth) =
                           "width: 100%; min-height: 400px; font-family: 'Courier New', monospace; font-size: 13px; padding: 10px; border: 1px solid #ced4da; border-radius: 4px; resize: vertical;" ]
                     [ str "" ] // Content loaded by htmx
                 |> fun t -> div [ _id "markdown-preview-content" ] [ t ] ] ]
+
+// -----------------------------
+// Export section (yearly)
+// -----------------------------
+
+let private exportSectionYearly (year: int) =
+    div
+        [ _style "margin: 20px 0; padding: 15px; background: #f8f9fa; border-radius: 8px; border: 1px solid #dee2e6;" ]
+        [ h3 [ _style "margin: 0 0 15px 0; font-size: 16px; color: #495057;" ] [ str "📊 Export Report" ]
+
+          div
+              [ _style "display: flex; gap: 10px; flex-wrap: wrap;" ]
+              [
+                // Markdown Preview button
+                button
+                    [ _hx "get" $"/reports/yearly/{year}/export/markdown"
+                      _hx "target" "#markdown-preview-content-yearly"
+                      _hx "swap" "innerHTML"
+                      _style
+                          "padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 500;"
+                      _ariaLabel "Preview Markdown export"
+                      attr "onclick" "document.getElementById('markdown-preview-yearly').style.display='block';" ]
+                    [ str "📄 Preview Markdown" ]
+
+                // Markdown Download button
+                a
+                    [ _href $"/reports/yearly/{year}/export/markdown?download=true"
+                      _style
+                          "padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; text-decoration: none; display: inline-block;"
+                      _ariaLabel "Download Markdown file"
+                      attr "download" $"time-report-{year:D4}.md" ]
+                    [ str "⬇️ Download Markdown" ]
+
+                // CSV Download button (placeholder)
+                button
+                    [ _disabled
+                      _style
+                          "padding: 8px 16px; background: #6c757d; color: white; border: none; border-radius: 4px; opacity: 0.6; cursor: not-allowed; font-weight: 500;"
+                      _ariaLabel "CSV export coming soon" ]
+                    [ str "📊 Download CSV (Coming Soon)" ] ]
+
+          // Preview container (hidden by default)
+          div
+              [ _id "markdown-preview-yearly"
+                _style
+                    "display: none; margin-top: 15px; padding: 15px; background: white; border: 1px solid #dee2e6; border-radius: 4px; position: relative;" ]
+              [ button
+                    [ _type "button"
+                      _style
+                          "position: absolute; top: 10px; right: 10px; background: #dc3545; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; font-weight: bold;"
+                      attr "onclick" "document.getElementById('markdown-preview-yearly').style.display='none';"
+                      _ariaLabel "Close preview" ]
+                    [ str "✕ Close" ]
+
+                h4 [ _style "margin: 0 0 10px 0; color: #495057;" ] [ str "Markdown Preview" ]
+
+                p
+                    [ _style "font-size: 12px; color: #6c757d; margin-bottom: 10px;" ]
+                    [ str "Copy the text below or click 'Copy to Clipboard':" ]
+
+                button
+                    [ _type "button"
+                      _style
+                          "margin-bottom: 10px; padding: 5px 12px; background: #17a2b8; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;"
+                      // modern clipboard API
+                      attr
+                          "onclick"
+                          "navigator.clipboard.writeText(document.getElementById('markdown-text-yearly').value)"
+                      _ariaLabel "Copy markdown text to clipboard" ]
+                    [ str "📋 Copy to Clipboard" ]
+
+                textarea
+                    [ _id "markdown-text-yearly"
+                      _readonly
+                      _style
+                          "width: 100%; min-height: 400px; font-family: 'Courier New', monospace; font-size: 13px; padding: 10px; border: 1px solid #ced4da; border-radius: 4px; resize: vertical;" ]
+                    [ str "" ] // Content loaded by htmx
+                |> fun t -> div [ _id "markdown-preview-content-yearly" ] [ t ] ] ]
 
 // -----------------------------
 // Month navigation controls
@@ -476,6 +553,9 @@ let yearlyReportView (summary: YearlySummary) (today: DateOnly) =
     div
         [ _id "report-content" ]
         [ yearNavigation summary.Year today
+
+          // Export section
+          exportSectionYearly summary.Year
 
           // Year summary cards
           div
