@@ -1,0 +1,23 @@
+# Build artifacts
+**/bin/
+**/obj/
+**/.vs/
+**/.vscode/
+**/.idea/
+**/.rider/
+
+# Git
+.git/
+.gitignore
+
+# Documentation
+*.md
+
+# Runtime data files (we'll mount these as volumes)
+# But keep sample files for compilation
+data/entries.csv
+
+# Temporary files
+**/*.swp
+**/*~
+.DS_Store
