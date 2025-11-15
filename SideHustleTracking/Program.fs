@@ -134,6 +134,33 @@ let indexHandler: HttpHandler =
         let view = indexView entries
         htmlView view next ctx
 
+let loadMoreEntriesHandler: HttpHandler =
+    fun next ctx ->
+        task {
+            let csvPath = getCsvPath ctx
+            let allEntries = readEntries csvPath
+
+            // Get count parameter (how many total to show)
+            let count =
+                ctx.Request.Query.["count"]
+                |> Seq.tryHead
+                |> Option.bind (fun s ->
+                    match Int32.TryParse(s) with
+                    | true, v -> Some v
+                    | _ -> None)
+                |> Option.defaultValue 50
+
+            let view = entriesListViewWithCount allEntries count
+            return! htmlView view next ctx
+        }
+
+let showAllEntriesHandler: HttpHandler =
+    fun next ctx ->
+        let csvPath = getCsvPath ctx
+        let allEntries = readEntries csvPath
+        let view = entriesListViewAll allEntries
+        htmlView view next ctx
+
 let addEntryHandler: HttpHandler =
     fun next ctx ->
         task {
@@ -765,6 +792,8 @@ let webApp =
           GET >=> routef "/reports/yearly/%i/export/csv" yearlyReportCsvHandler
           GET >=> routef "/fx/%s" getFxRateHandler
           GET >=> route "/entries/export/csv" >=> exportAllEntriesHandler
+          GET >=> route "/entries/more" >=> loadMoreEntriesHandler
+          GET >=> route "/entries/all" >=> showAllEntriesHandler
           POST >=> route "/entries" >=> addEntryHandler
           POST >=> routef "/entries/%s/close" closeEntryHandler
           GET >=> routef "/entries/%s/edit" showEditFormHandler

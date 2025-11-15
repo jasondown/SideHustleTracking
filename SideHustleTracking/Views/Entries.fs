@@ -20,38 +20,6 @@ let private stripHours (h: decimal<h>) : decimal = h / 1m<h>
 let private stripCad (c: decimal<CAD>) : decimal = c / 1m<CAD>
 let private stripUsd (u: decimal<USD>) : decimal = u / 1m<USD>
 
-let private paginationControls (totalCount: int) (displayedCount: int) (showingAll: bool) =
-    if showingAll || displayedCount >= totalCount then
-        // No controls needed - showing everything
-        div [] []
-    else
-        let remaining = totalCount - displayedCount
-
-        div
-            [ _style "margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px; text-align: center;" ]
-            [ p
-                  [ _style "margin: 0 0 10px 0; color: #666;" ]
-                  [ str $"Showing {displayedCount} of {totalCount} entries" ]
-
-              div
-                  [ _style "display: flex; gap: 10px; justify-content: center;" ]
-                  [ button
-                        [ _hx "get" $"/entries/more?skip={displayedCount}&take=25"
-                          _hx "target" "#entries-table-body"
-                          _hx "swap" "beforeend"
-                          _hx "select" "tr"
-                          _style
-                              "padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 500;" ]
-                        [ str $"Load More (25)" ]
-
-                    button
-                        [ _hx "get" "/entries/all"
-                          _hx "target" "#entries-list"
-                          _hx "swap" "outerHTML"
-                          _style
-                              "padding: 8px 16px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 500;" ]
-                        [ str $"Show All ({remaining} more)" ] ] ]
-
 let entryRow (entry: Entry) =
     match entry with
     | Open o ->
@@ -235,12 +203,73 @@ let entriesTable (entries: Entry list) =
                       th [] [ str "Actions" ] ] ]
           tbody [ _id "entries-table-body" ] (entries |> List.map entryRow) ]
 
-let entriesListView (entries: Entry list) =
-    let totalCount = List.length entries
-    let displayedEntries = entries |> List.truncate 25
-    let displayedCount = List.length displayedEntries
-    let showingAll = displayedCount >= totalCount
+let private paginationControls (totalCount: int) (displayedCount: int) (showingAll: bool) =
+    if showingAll || displayedCount >= totalCount then
+        // No controls needed - showing everything
+        div [] []
+    else
+        let remaining = totalCount - displayedCount
+        let nextCount = min 25 remaining
 
+        div
+            [ _style "margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px; text-align: center;" ]
+            [ p
+                  [ _style "margin: 0 0 10px 0; color: #666;" ]
+                  [ str $"Showing {displayedCount} of {totalCount} entries" ]
+
+              div
+                  [ _style "display: flex; gap: 10px; justify-content: center;" ]
+                  [ button
+                        [ _hx "get" $"/entries/more?count={displayedCount + 25}"
+                          _hx "target" "#entries-list-content"
+                          _hx "swap" "innerHTML"
+                          _style
+                              "padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 500;" ]
+                        [ str $"Load More ({nextCount})" ]
+
+                    button
+                        [ _hx "get" "/entries/all"
+                          _hx "target" "#entries-list-content"
+                          _hx "swap" "innerHTML"
+                          _style
+                              "padding: 8px 16px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 500;" ]
+                        [ str $"Show All ({remaining} more)" ] ] ]
+
+// Inner content that gets swapped
+let private entriesListContent (entries: Entry list) (displayCount: int) =
+    let totalCount = List.length entries
+    let displayedEntries = entries |> List.truncate displayCount
+    let actualDisplayed = List.length displayedEntries
+    let showingAll = actualDisplayed >= totalCount
+
+    if List.isEmpty entries then
+        p [] [ str "No entries yet. Start tracking your time!" ]
+    else
+        div
+            []
+            [ entriesTable displayedEntries
+              paginationControls totalCount actualDisplayed showingAll ]
+
+// Inner content for showing all entries
+let private entriesListContentAll (entries: Entry list) =
+    let totalCount = List.length entries
+
+    if List.isEmpty entries then
+        p [] [ str "No entries yet. Start tracking your time!" ]
+    else
+        div
+            []
+            [ entriesTable entries
+              div
+                  [ _style
+                        "margin-top: 20px; padding: 10px; background: #d4edda; border-radius: 8px; text-align: center;" ]
+                  [ p [ _style "margin: 0; color: #155724;" ] [ str $"Showing all {totalCount} entries" ] ] ]
+
+// Helper to create the entries list with a specific display count
+let entriesListViewWithCount (entries: Entry list) (displayCount: int) =
+    div [ _id "entries-list-content" ] [ entriesListContent entries displayCount ]
+
+let entriesListView (entries: Entry list) =
     div
         [ _id "entries-list"
           // Only refocus when the request came from the Add Entry form
@@ -267,52 +296,11 @@ let entriesListView (entries: Entry list) =
               });
             })();
           " ]
-        [ if List.isEmpty entries then
-              p [] [ str "No entries yet. Start tracking your time!" ]
-          else
-              entriesTable displayedEntries
-              paginationControls totalCount displayedCount showingAll ]
+        [ div [ _id "entries-list-content" ] [ entriesListContent entries 25 ] ]
 
 // Full entries list view (for "Show All" option)
 let entriesListViewAll (entries: Entry list) =
-    let totalCount = List.length entries
-
-    div
-        [ _id "entries-list"
-          attr
-              "hx-on::after-settle"
-              "
-            (function(){
-              var e = window.$event || window.event;
-              var d = e && e.detail || {};
-              var initiator = d.elt;
-              var isAddForm = initiator && initiator.id === 'add-entry-form';
-              if (!isAddForm) return;
-
-              requestAnimationFrame(function(){
-                requestAnimationFrame(function(){
-                  var date = document.getElementById('date-input');
-                  if (date) {
-                    try { document.activeElement && document.activeElement.blur(); } catch(_) {}
-                    date.focus();
-                    try { date.select && date.select(); } catch(_) {}
-                  }
-                });
-              });
-            })();
-          " ]
-        [ if List.isEmpty entries then
-              p [] [ str "No entries yet. Start tracking your time!" ]
-          else
-              entriesTable entries
-
-              div
-                  [ _style
-                        "margin-top: 20px; padding: 10px; background: #d4edda; border-radius: 8px; text-align: center;" ]
-                  [ p [ _style "margin: 0; color: #155724;" ] [ str $"Showing all {totalCount} entries" ] ] ]
-
-// Partial view for "Load More" - returns just the rows to append
-let moreEntriesRows (entries: Entry list) = div [] (entries |> List.map entryRow)
+    div [ _id "entries-list-content" ] [ entriesListContentAll entries ]
 
 let addEntryForm (errors: string list option) =
     let now = DateTime.Now
