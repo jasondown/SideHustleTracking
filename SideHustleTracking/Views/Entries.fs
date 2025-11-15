@@ -7,6 +7,7 @@ open SideHustleTracking.Domain.UnitsOfMeasure
 
 // Helper to create htmx attributes
 let private _hx (name: string) (value: string) = attr ("hx-" + name) value
+let private _ariaLabel (value: string) = attr "aria-label" value
 
 let private formatTime (time: TimeOnly) = time.ToString("HH:mm")
 let private formatDate (date: DateOnly) = date.ToString("yyyy-MM-dd")
@@ -342,6 +343,22 @@ document.body.addEventListener('htmx:afterSettle', function (evt) {
 
 """ ] ]
 
+let private exportAllEntriesSection () =
+    div
+        [ _style "margin: 20px 0; padding: 15px; background: #f8f9fa; border-radius: 8px; border: 1px solid #dee2e6;" ]
+        [ h3 [ _style "margin: 0 0 10px 0; font-size: 16px; color: #495057;" ] [ str "📦 Backup & Export" ]
+
+          p
+              [ _style "margin: 0 0 15px 0; font-size: 14px; color: #666;" ]
+              [ str "Export all entries (including open entries) as CSV for backup or external analysis." ]
+
+          a
+              [ _href "/entries/export/csv"
+                _style
+                    "padding: 8px 16px; background: #17a2b8; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; text-decoration: none; display: inline-block;"
+                _ariaLabel "Download all entries as CSV" ]
+              [ str "📊 Download All Entries (CSV)" ] ]
+
 let indexView (entries: Entry list) =
     let now = DateTime.Now
 
@@ -370,6 +387,9 @@ let indexView (entries: Entry list) =
                     [ str "Yearly Report" ] ]
 
           h1 [] [ str "Side Hustle Time Tracker" ]
+
+          // Export section
+          exportAllEntriesSection ()
 
           addEntryForm None
 

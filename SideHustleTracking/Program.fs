@@ -494,6 +494,28 @@ let getFxRateHandler (dateStr: string) : HttpHandler =
                     | None -> return! (setStatusCode 500 >=> text "Could not fetch FX rate") next ctx
         }
 
+let exportAllEntriesHandler: HttpHandler =
+    fun next ctx ->
+        task {
+            let csvPath = getCsvPath ctx
+            let allEntries = readEntries csvPath
+
+            // Generate CSV content (includes both open and closed entries)
+            let csv = formatAllEntriesAsCsv allEntries
+
+            // Generate filename with current timestamp for uniqueness
+            let now = DateTime.Now
+            let timestamp = now.ToString("yyyy-MM-dd-HHmmss")
+            let filename = $"time-entries-all-{timestamp}.csv"
+
+            return!
+                (setHttpHeader "Content-Type" "text/csv; charset=utf-8"
+                 >=> setHttpHeader "Content-Disposition" $"attachment; filename=\"{filename}\""
+                 >=> setBodyFromString csv)
+                    next
+                    ctx
+        }
+
 let monthlyReportHandler (year: int, month: int) : HttpHandler =
     fun next ctx ->
         task {
@@ -557,7 +579,7 @@ let monthlyReportMarkdownHandler (year: int, month: int) : HttpHandler =
                     let isHtmxRequest = ctx.Request.Headers.ContainsKey("HX-Request")
 
                     if isHtmxRequest then
-                        // For htmx preview, return just the markdown text wrapped in textarea
+                        // For htmx preview, return just the Markdown text wrapped in textarea
                         let previewHtml =
                             textarea
                                 [ _id "markdown-text"
@@ -742,6 +764,7 @@ let webApp =
           GET >=> routef "/reports/yearly/%i/export/markdown" yearlyReportMarkdownHandler
           GET >=> routef "/reports/yearly/%i/export/csv" yearlyReportCsvHandler
           GET >=> routef "/fx/%s" getFxRateHandler
+          GET >=> route "/entries/export/csv" >=> exportAllEntriesHandler
           POST >=> route "/entries" >=> addEntryHandler
           POST >=> routef "/entries/%s/close" closeEntryHandler
           GET >=> routef "/entries/%s/edit" showEditFormHandler
