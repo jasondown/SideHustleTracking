@@ -3,6 +3,7 @@ module SideHustleTracking.Domain.Export
 open System
 open System.Globalization
 open SideHustleTracking.Domain.Reports
+open SideHustleTracking.Domain.Types
 open SideHustleTracking.Domain.UnitsOfMeasure
 
 // -----------------------------
@@ -116,3 +117,61 @@ let formatYearlyReportAsMarkdown (summary: YearlySummary) : string =
 
     // Join all lines with newlines
     String.Join("\n", lines)
+
+// -----------------------------
+// CSV Formatting
+// -----------------------------
+
+/// Format a single open entry as a CSV row (no header)
+let private formatOpenEntryAsCsvRow (entry: OpenInterval) : string =
+    let (EntryId guid) = entry.Id
+    let id = guid.ToString()
+    let date = entry.Date.ToString("yyyy-MM-dd")
+    let start = entry.Start.ToString("HH:mm")
+
+    let usdRate =
+        (entry.UsdRate / 1m<rate>).ToString("F2", CultureInfo.InvariantCulture)
+
+    let fxRate =
+        (entry.FxCadPerUsd / 1m<fx>).ToString("F4", CultureInfo.InvariantCulture)
+    // Open entries have empty end, hours, and total_cad fields
+    $"{id},{date},{start},,{usdRate},{fxRate},,"
+
+/// Format a single closed entry as a CSV row (no header)
+let private formatClosedEntryAsCsvRow (entry: ClosedInterval) : string =
+    let (EntryId guid) = entry.Id
+    let id = guid.ToString()
+    let date = entry.Date.ToString("yyyy-MM-dd")
+    let start = entry.Start.ToString("HH:mm")
+    let endTime = entry.End.ToString("HH:mm")
+    // Use invariant culture for CSV to ensure consistent decimal format (no thousands separators, period as decimal)
+    let usdRate =
+        (entry.UsdRate / 1m<rate>).ToString("F2", CultureInfo.InvariantCulture)
+
+    let fxRate =
+        (entry.FxCadPerUsd / 1m<fx>).ToString("F4", CultureInfo.InvariantCulture)
+
+    let hours = (entry.Hours / 1m<h>).ToString("F2", CultureInfo.InvariantCulture)
+
+    let totalCad =
+        (entry.TotalCad / 1m<CAD>).ToString("F2", CultureInfo.InvariantCulture)
+
+    $"{id},{date},{start},{endTime},{usdRate},{fxRate},{hours},{totalCad}"
+
+/// Generate CSV export for a list of closed entries (includes header)
+let formatClosedEntriesAsCsv (entries: ClosedInterval list) : string =
+    let header = "id,date,start,end,usd_rate_per_hour,fx_cad_per_usd,hours,total_cad"
+    let rows = entries |> List.map formatClosedEntryAsCsvRow
+    String.Join("\n", header :: rows)
+
+/// Format a single entry (open or closed) as a CSV row (no header)
+let private formatEntryAsCsvRow (entry: Entry) : string =
+    match entry with
+    | Open o -> formatOpenEntryAsCsvRow o
+    | Closed c -> formatClosedEntryAsCsvRow c
+
+/// Generate CSV export for all entries (includes header, supports both open and closed)
+let formatAllEntriesAsCsv (entries: Entry list) : string =
+    let header = "id,date,start,end,usd_rate_per_hour,fx_cad_per_usd,hours,total_cad"
+    let rows = entries |> List.map formatEntryAsCsvRow
+    String.Join("\n", header :: rows)
