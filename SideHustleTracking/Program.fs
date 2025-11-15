@@ -585,6 +585,40 @@ let monthlyReportMarkdownHandler (year: int, month: int) : HttpHandler =
                                 ctx
         }
 
+let monthlyReportCsvHandler (year: int, month: int) : HttpHandler =
+    fun next ctx ->
+        task {
+            let csvPath = getCsvPath ctx
+            let today = getTodayInToronto ()
+
+            // Validate the year/month
+            if month < 1 || month > 12 then
+                return! (setStatusCode 400 >=> text "Invalid month") next ctx
+            else
+                let yearMonth = { Year = year; Month = month }
+
+                // Check if month is in future
+                if isMonthInFuture yearMonth today then
+                    return! (setStatusCode 400 >=> text "Cannot export future months") next ctx
+                else
+                    // Load all entries and get closed entries for this month
+                    let allEntries = readEntries csvPath
+                    let closedEntries = getMonthlyEntries yearMonth allEntries
+
+                    // Generate CSV content
+                    let csv = formatClosedEntriesAsCsv closedEntries
+
+                    // Set filename and headers for download
+                    let filename = $"time-entries-{year:D4}-{month:D2}.csv"
+
+                    return!
+                        (setHttpHeader "Content-Type" "text/csv; charset=utf-8"
+                         >=> setHttpHeader "Content-Disposition" $"attachment; filename=\"{filename}\""
+                         >=> setBodyFromString csv)
+                            next
+                            ctx
+        }
+
 let yearlyReportHandler (year: int) : HttpHandler =
     fun next ctx ->
         task {
@@ -663,15 +697,50 @@ let yearlyReportMarkdownHandler (year: int) : HttpHandler =
                             ctx
         }
 
-// Update the webApp routes
+let yearlyReportCsvHandler (year: int) : HttpHandler =
+    fun next ctx ->
+        task {
+            let csvPath = getCsvPath ctx
+            let today = getTodayInToronto ()
+
+            // Check if year is in future
+            if isYearInFuture year today then
+                return! (setStatusCode 400 >=> text "Cannot export future years") next ctx
+            else
+                // Load all entries and filter to closed entries for this year
+                let allEntries = readEntries csvPath
+
+                let closedEntries =
+                    allEntries
+                    |> List.choose (function
+                        | Closed c when c.Date.Year = year -> Some c
+                        | _ -> None)
+                    |> List.sortBy (fun c -> c.Date, c.Start)
+
+                // Generate CSV content
+                let csv = formatClosedEntriesAsCsv closedEntries
+
+                // Set filename and headers for download
+                let filename = $"time-entries-{year:D4}.csv"
+
+                return!
+                    (setHttpHeader "Content-Type" "text/csv; charset=utf-8"
+                     >=> setHttpHeader "Content-Disposition" $"attachment; filename=\"{filename}\""
+                     >=> setBodyFromString csv)
+                        next
+                        ctx
+        }
+
 let webApp =
     choose
         [ GET >=> route "/" >=> indexHandler
           GET >=> routef "/reports/monthly/%i/%i" monthlyReportHandler
           GET
           >=> routef "/reports/monthly/%i/%i/export/markdown" monthlyReportMarkdownHandler
+          GET >=> routef "/reports/monthly/%i/%i/export/csv" monthlyReportCsvHandler
           GET >=> routef "/reports/yearly/%i" yearlyReportHandler
           GET >=> routef "/reports/yearly/%i/export/markdown" yearlyReportMarkdownHandler
+          GET >=> routef "/reports/yearly/%i/export/csv" yearlyReportCsvHandler
           GET >=> routef "/fx/%s" getFxRateHandler
           POST >=> route "/entries" >=> addEntryHandler
           POST >=> routef "/entries/%s/close" closeEntryHandler
