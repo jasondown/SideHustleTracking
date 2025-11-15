@@ -69,13 +69,14 @@ let private exportSection (ym: YearMonth) =
                       attr "download" $"time-report-{ym.Year:D4}-{ym.Month:D2}.md" ]
                     [ str "⬇️ Download Markdown" ]
 
-                // CSV Download button (placeholder)
-                button
-                    [ _disabled
+                // CSV Download button
+                a
+                    [ _href $"/reports/monthly/{ym.Year}/{ym.Month}/export/csv"
                       _style
-                          "padding: 8px 16px; background: #6c757d; color: white; border: none; border-radius: 4px; opacity: 0.6; cursor: not-allowed; font-weight: 500;"
-                      _ariaLabel "CSV export coming soon" ]
-                    [ str "📊 Download CSV (Coming Soon)" ] ]
+                          "padding: 8px 16px; background: #17a2b8; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; text-decoration: none; display: inline-block;"
+                      _ariaLabel "Download CSV file"
+                      attr "download" $"time-entries-{ym.Year:D4}-{ym.Month:D2}.csv" ]
+                    [ str "📊 Download CSV" ] ]
 
           // Preview container (hidden by default)
           div
@@ -145,13 +146,14 @@ let private exportSectionYearly (year: int) =
                       attr "download" $"time-report-{year:D4}.md" ]
                     [ str "⬇️ Download Markdown" ]
 
-                // CSV Download button (placeholder)
-                button
-                    [ _disabled
+                // CSV Download button
+                a
+                    [ _href $"/reports/yearly/{year}/export/csv"
                       _style
-                          "padding: 8px 16px; background: #6c757d; color: white; border: none; border-radius: 4px; opacity: 0.6; cursor: not-allowed; font-weight: 500;"
-                      _ariaLabel "CSV export coming soon" ]
-                    [ str "📊 Download CSV (Coming Soon)" ] ]
+                          "padding: 8px 16px; background: #17a2b8; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; text-decoration: none; display: inline-block;"
+                      _ariaLabel "Download CSV file"
+                      attr "download" $"time-entries-{year:D4}.csv" ]
+                    [ str "📊 Download CSV" ] ]
 
           // Preview container (hidden by default)
           div
