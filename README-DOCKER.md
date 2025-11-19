@@ -56,6 +56,7 @@ services:
       - DataPaths__EntriesCsv=/app/data/entries.csv
       - DataPaths__FxSnapshotDir=/app/data/fx
       - FxApiUrl=https://api.frankfurter.app
+      - TZ=America/Toronto
     restart: unless-stopped
 EOF
 

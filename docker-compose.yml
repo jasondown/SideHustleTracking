@@ -1,17 +1,15 @@
 services:
   sidehustle-tracker:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: sidehustle-tracker:latest
     container_name: sidehustle-tracker
     ports:
       - "5152:8080"
     volumes:
-      # Mount data directory to persist entries and FX snapshots
       - ./data:/app/data
     environment:
       - ASPNETCORE_ENVIRONMENT=Production
       - DataPaths__EntriesCsv=/app/data/entries.csv
       - DataPaths__FxSnapshotDir=/app/data/fx
       - FxApiUrl=https://api.frankfurter.app
+      - TZ=America/Toronto
     restart: unless-stopped
