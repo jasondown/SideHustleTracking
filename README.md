@@ -1,6 +1,6 @@
 # Side Hustle Tracking
 
-![License: Unlicense](https://img.shields.io/badge/license-Unlicense-blue.svg)
+![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
 
 This is a play project I use for time tracking my side hustle. It is specifically set up for my needs, and is not a generic time tracking tool. With that in mind, it may or may not be useful for others.
 
@@ -30,3 +30,7 @@ This project was also to explore building an F# web application using Giraffe an
 <img width="1536" height="884" alt="image" src="https://github.com/user-attachments/assets/7704f18c-5a01-44be-b385-4b7e69bd4a36" />
 
 <img width="1334" height="1337" alt="image" src="https://github.com/user-attachments/assets/8ee06ba4-991f-400c-9bf8-c5ccb8f54571" />
+
+## License
+
+This project is licensed under the MIT License. See [LICENSE](./LICENSE) for details.
